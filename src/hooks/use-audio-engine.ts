@@ -12,7 +12,7 @@ export type Effect = {
   id: string;
   type: EffectType;
   wet: number;
-  node: Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Tone.Phaser | Tone.Chorus | Tone.Flanger | null;
+  node: Tone.Reverb | Tone.FeedbackDelay | Tone.Distortion | Tone.Chorus | Tone.Flanger | Tone.Phaser | null;
   [key: string]: any; 
 };
 
@@ -367,7 +367,7 @@ export function useAudioEngine() {
       
       if(track.player && track.channel) {
         track.player.disconnect();
-        const newNodes: (Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Tone.Phaser | Tone.Chorus | Tone.Flanger)[] = [];
+        const newNodes: (Tone.Reverb | Tone.FeedbackDelay | Tone.Distortion | Tone.Chorus | Tone.Flanger | Tone.Phaser)[] = [];
         track.effects.forEach((effect, index) => {
           let node: Effect['node'] = null;
           switch (effect.type) {

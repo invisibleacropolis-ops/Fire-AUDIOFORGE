@@ -3,12 +3,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as Tone from 'tone';
-import { Reverb } from 'tone/effect/Reverb';
-import { FeedbackDelay } from 'tone/effect/FeedbackDelay';
-import { Distortion } from 'tone/effect/Distortion';
-import { Chorus } from 'tone/effect/Chorus';
-import { Flanger } from 'tone/effect/Flanger';
-import { Phaser } from 'tone/effect/Phaser';
 import { useToast } from './use-toast';
 
 // Type definitions
@@ -18,7 +12,7 @@ export type Effect = {
   id: string;
   type: EffectType;
   wet: number;
-  node: Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Phaser | Chorus | Flanger | null;
+  node: Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Tone.Phaser | Tone.Chorus | Tone.Flanger | null;
   [key: string]: any; 
 };
 
@@ -373,16 +367,16 @@ export function useAudioEngine() {
       
       if(track.player && track.channel) {
         track.player.disconnect();
-        const newNodes: (Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Phaser | Chorus | Flanger)[] = [];
+        const newNodes: (Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Tone.Phaser | Tone.Chorus | Tone.Flanger)[] = [];
         track.effects.forEach((effect, index) => {
           let node: Effect['node'] = null;
           switch (effect.type) {
-            case 'reverb': node = new Reverb({ wet: effect.wet }); break;
-            case 'delay': node = new FeedbackDelay({ wet: effect.wet }); break;
-            case 'distortion': node = new Distortion({ wet: effect.wet }); break;
-            case 'chorus': node = new Chorus({ wet: effect.wet }); break;
-            case 'flanger': node = new Flanger({ wet: effect.wet }); break;
-            case 'phaser': node = new Phaser({ wet: effect.wet }); break;
+            case 'reverb': node = new Tone.Reverb({ wet: effect.wet }); break;
+            case 'delay': node = new Tone.FeedbackDelay({ wet: effect.wet }); break;
+            case 'distortion': node = new Tone.Distortion({ wet: effect.wet }); break;
+            case 'chorus': node = new Tone.Chorus({ wet: effect.wet }); break;
+            case 'flanger': node = new Tone.Flanger({ wet: effect.wet }); break;
+            case 'phaser': node = new Tone.Phaser({ wet: effect.wet }); break;
           }
           if(node) {
             track.effects[index].node = node;
@@ -417,3 +411,5 @@ export function useAudioEngine() {
     trimTrack,
   };
 }
+
+    

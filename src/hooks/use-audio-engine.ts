@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as Tone from 'tone';
+import { Reverb, FeedbackDelay, Distortion, Chorus, Flanger, Phaser } from 'tone';
 import { useToast } from './use-toast';
 
 // Type definitions
@@ -371,12 +372,12 @@ export function useAudioEngine() {
         track.effects.forEach((effect, index) => {
           let node: Effect['node'] = null;
           switch (effect.type) {
-            case 'reverb': node = new Tone.Reverb({ wet: effect.wet }); break;
-            case 'delay': node = new Tone.FeedbackDelay({ wet: effect.wet }); break;
-            case 'distortion': node = new Tone.Distortion({ wet: effect.wet }); break;
-            case 'chorus': node = new Tone.Chorus({ wet: effect.wet }); break;
-            case 'flanger': node = new Tone.Flanger({ wet: effect.wet }); break;
-            case 'phaser': node = new Tone.Phaser({ wet: effect.wet }); break;
+            case 'reverb': node = new Reverb({ wet: effect.wet }); break;
+            case 'delay': node = new FeedbackDelay({ wet: effect.wet }); break;
+            case 'distortion': node = new Distortion({ wet: effect.wet }); break;
+            case 'chorus': node = new Chorus({ wet: effect.wet }); break;
+            case 'flanger': node = new Flanger({ wet: effect.wet }); break;
+            case 'phaser': node = new Phaser({ wet: effect.wet }); break;
           }
           if(node) {
             track.effects[index].node = node;

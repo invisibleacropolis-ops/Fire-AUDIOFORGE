@@ -8,12 +8,15 @@ import { useToast } from './use-toast';
 // Type definitions
 export type EffectType = 'reverb' | 'delay' | 'distortion' | 'chorus' | 'flanger' | 'phaser';
 
+// Correctly type the effect nodes for Tone.js v15+
+export type EffectNode = Tone.Reverb | Tone.FeedbackDelay | Tone.Distortion | Tone.Chorus | Tone.Flanger | Tone.Phaser;
+
 export type Effect = {
   id: string;
   type: EffectType;
   wet: number;
-  node: Tone.Reverb | Tone.FeedbackDelay | Tone.Distortion | Tone.Chorus | Tone.Flanger | Tone.Phaser | null;
-  [key: string]: any; 
+  node: EffectNode | null;
+  [key: string]: any;
 };
 
 export type Track = {
@@ -94,7 +97,8 @@ export function useAudioEngine() {
 
   useEffect(() => {
     const init = async () => {
-      await Tone.start();
+      // Tone.start() is now implicitly called when needed and returns a promise
+      // It's better to call it on a user interaction, like a button click
       setIsReady(true);
       recorderRef.current = new Tone.Recorder();
     };
@@ -362,14 +366,15 @@ export function useAudioEngine() {
         track.channel.mute = hasSolo ? !track.isSoloed : track.isMuted;
       }
 
-      const existingNodes = track.effects.map(e => e.node).filter(Boolean);
-      existingNodes.forEach(node => node?.dispose());
+      // Dispose of old effect nodes before creating new ones
+      track.effects.forEach(e => e.node?.dispose());
       
       if(track.player && track.channel) {
         track.player.disconnect();
-        const newNodes: (Tone.Reverb | Tone.FeedbackDelay | Tone.Distortion | Tone.Chorus | Tone.Flanger | Tone.Phaser)[] = [];
-        track.effects.forEach((effect, index) => {
-          let node: Effect['node'] = null;
+
+        // Create new effect nodes based on the updated track.effects array
+        const newEffectNodes = track.effects.map((effect, index) => {
+          let node: EffectNode | null = null;
           switch (effect.type) {
             case 'reverb': node = new Tone.Reverb({ wet: effect.wet }); break;
             case 'delay': node = new Tone.FeedbackDelay({ wet: effect.wet }); break;
@@ -378,20 +383,26 @@ export function useAudioEngine() {
             case 'flanger': node = new Tone.Flanger({ wet: effect.wet }); break;
             case 'phaser': node = new Tone.Phaser({ wet: effect.wet }); break;
           }
-          if(node) {
-            track.effects[index].node = node;
-            newNodes.push(node);
-          }
-        });
+          track.effects[index].node = node; // Update the node reference in the effect object
+          return node;
+        }).filter((node): node is NonNullable<EffectNode> => node !== null);
         
-        if (newNodes.length > 0) {
-            track.player.chain(...newNodes, track.channel);
+        if (newEffectNodes.length > 0) {
+            track.player.chain(...newEffectNodes, track.channel);
         } else {
             track.player.connect(track.channel);
         }
       }
     });
 
+    // Cleanup function to dispose of effects when component unmounts
+    return () => {
+        tracks.forEach(track => {
+            track.effects.forEach(effect => {
+                effect.node?.dispose();
+            });
+        });
+    };
   }, [tracks]);
 
   return {
@@ -411,5 +422,3 @@ export function useAudioEngine() {
     trimTrack,
   };
 }
-
-    

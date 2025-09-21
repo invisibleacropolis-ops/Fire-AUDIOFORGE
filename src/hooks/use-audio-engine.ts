@@ -3,7 +3,12 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as Tone from 'tone';
-import { Reverb, FeedbackDelay, Distortion, Chorus, Flanger, Phaser } from 'tone';
+import { Reverb } from 'tone/effect/Reverb';
+import { FeedbackDelay } from 'tone/effect/FeedbackDelay';
+import { Distortion } from 'tone/effect/Distortion';
+import { Chorus } from 'tone/effect/Chorus';
+import { Flanger } from 'tone/effect/Flanger';
+import { Phaser } from 'tone/effect/Phaser';
 import { useToast } from './use-toast';
 
 // Type definitions
@@ -13,7 +18,7 @@ export type Effect = {
   id: string;
   type: EffectType;
   wet: number;
-  node: Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Tone.Phaser | null;
+  node: Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Phaser | Chorus | Flanger | null;
   [key: string]: any; 
 };
 
@@ -368,7 +373,7 @@ export function useAudioEngine() {
       
       if(track.player && track.channel) {
         track.player.disconnect();
-        const newNodes: (Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Tone.Phaser)[] = [];
+        const newNodes: (Tone.FeedbackEffect<any> | Tone.Reverb | Tone.Distortion | Phaser | Chorus | Flanger)[] = [];
         track.effects.forEach((effect, index) => {
           let node: Effect['node'] = null;
           switch (effect.type) {

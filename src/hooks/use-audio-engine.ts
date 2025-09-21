@@ -383,7 +383,9 @@ export function useAudioEngine() {
             case 'flanger': node = new Tone.Flanger({ wet: effect.wet }); break;
             case 'phaser': node = new Tone.Phaser({ wet: effect.wet }); break;
           }
-          track.effects[index].node = node; // Update the node reference in the effect object
+          if (node) {
+            track.effects[index].node = node; // Update the node reference in the effect object
+          }
           return node;
         }).filter((node): node is NonNullable<EffectNode> => node !== null);
         

@@ -1,3 +1,10 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "audioforge-logo",
+      "description": "AudioForge Logo",
+      "imageUrl": "https://picsum.photos/seed/aflogo/64/64",
+      "imageHint": "sound wave audio"
+    }
+  ]
 }

@@ -3,12 +3,12 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Player, Channel, Transport, start, context, Recorder, UserMedia, loaded, Offline } from 'tone';
-import { Reverb } from 'tone/build/esm/effect/Reverb';
-import { FeedbackDelay } from 'tone/build/esm/effect/FeedbackDelay';
-import { Distortion } from 'tone/build/esm/effect/Distortion';
-import { Chorus } from 'tone/build/esm/effect/Chorus';
-import { Flanger } from 'tone/build/esm/effect/Flanger';
-import { Phaser } from 'tone/build/esm/effect/Phaser';
+import { Reverb } from 'tone/build/esm/Reverb';
+import { FeedbackDelay } from 'tone/build/esm/FeedbackDelay';
+import { Distortion } from 'tone/build/esm/Distortion';
+import { Chorus } from 'tone/build/esm/Chorus';
+import { Flanger } from 'tone/build/esm/Flanger';
+import { Phaser } from 'tone/build/esm/Phaser';
 import { useToast } from './use-toast';
 
 // Type definitions

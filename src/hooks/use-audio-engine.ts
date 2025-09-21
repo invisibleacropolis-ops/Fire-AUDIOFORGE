@@ -2,14 +2,20 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import * as Tone from 'tone';
+import { Player, Channel, Transport, start, context, Recorder, UserMedia, loaded, Offline } from 'tone';
+import { Reverb } from 'tone/effect/Reverb';
+import { FeedbackDelay } from 'tone/effect/FeedbackDelay';
+import { Distortion } from 'tone/effect/Distortion';
+import { Chorus } from 'tone/effect/Chorus';
+import { Flanger } from 'tone/effect/Flanger';
+import { Phaser } from 'tone/effect/Phaser';
 import { useToast } from './use-toast';
 
 // Type definitions
 export type EffectType = 'reverb' | 'delay' | 'distortion' | 'chorus' | 'flanger' | 'phaser';
 
 // Correctly type the effect nodes for Tone.js v15+
-export type EffectNode = Tone.Reverb | Tone.FeedbackDelay | Tone.Distortion | Tone.Chorus | Tone.Flanger | Tone.Phaser;
+export type EffectNode = Reverb | FeedbackDelay | Distortion | Chorus | Flanger | Phaser;
 
 export type Effect = {
   id: string;
@@ -23,8 +29,8 @@ export type Track = {
   id: string;
   name: string;
   url?: string;
-  player: Tone.Player | null;
-  channel: Tone.Channel | null;
+  player: Player | null;
+  channel: Channel | null;
   effects: Effect[];
   volume: number; // in dB
   pan: number; // -1 to 1
@@ -88,8 +94,8 @@ export function useAudioEngine() {
   const { toast } = useToast();
 
   const tracksRef = useRef<Track[]>([]);
-  const recorderRef = useRef<Tone.Recorder | null>(null);
-  const userMediaRef = useRef<Tone.UserMedia | null>(null);
+  const recorderRef = useRef<Recorder | null>(null);
+  const userMediaRef = useRef<UserMedia | null>(null);
 
   useEffect(() => {
     tracksRef.current = tracks;
@@ -97,10 +103,10 @@ export function useAudioEngine() {
 
   useEffect(() => {
     const init = async () => {
-      // Tone.start() is now implicitly called when needed and returns a promise
+      // start() is now implicitly called when needed and returns a promise
       // It's better to call it on a user interaction, like a button click
       setIsReady(true);
-      recorderRef.current = new Tone.Recorder();
+      recorderRef.current = new Recorder();
     };
     init();
 
@@ -116,21 +122,21 @@ export function useAudioEngine() {
       });
       recorderRef.current?.dispose();
       userMediaRef.current?.dispose();
-      Tone.Transport.stop();
-      Tone.Transport.cancel();
+      Transport.stop();
+      Transport.cancel();
     }
   }, []);
 
   const startAudioContext = useCallback(async () => {
-    if (Tone.context.state !== 'running') {
-        await Tone.start();
+    if (context.state !== 'running') {
+        await start();
     }
     setIsStarted(true);
   }, []);
 
   const addTrack = useCallback((): string => {
     const id = `track-${Date.now()}`;
-    const channel = new Tone.Channel(0, 0).toDestination();
+    const channel = new Channel(0, 0).toDestination();
     const newTrack: Track = {
       id,
       name: `Track ${tracks.length + 1}`,
@@ -154,12 +160,12 @@ export function useAudioEngine() {
   const importAudio = useCallback(async (file: File): Promise<string | null> => {
     try {
       const url = URL.createObjectURL(file);
-      const player = new Tone.Player();
+      const player = new Player();
       await player.load(url);
       const duration = player.buffer.duration;
       
       const id = `track-${Date.now()}`;
-      const channel = new Tone.Channel(0, 0).toDestination();
+      const channel = new Channel(0, 0).toDestination();
       player.connect(channel);
 
       const newTrack: Track = {
@@ -187,14 +193,14 @@ export function useAudioEngine() {
   }, [toast]);
   
   const togglePlayback = useCallback(async () => {
-    if (Tone.context.state !== 'running') {
-      await Tone.start();
+    if (context.state !== 'running') {
+      await start();
     }
-    if (Tone.Transport.state === 'started') {
-      Tone.Transport.pause();
+    if (Transport.state === 'started') {
+      Transport.pause();
       setIsPlaying(false);
     } else {
-      Tone.Transport.start();
+      Transport.start();
       setIsPlaying(true);
     }
   }, []);
@@ -202,7 +208,7 @@ export function useAudioEngine() {
   const startRecording = useCallback(async () => {
     try {
       if (!userMediaRef.current) {
-        userMediaRef.current = new Tone.UserMedia();
+        userMediaRef.current = new UserMedia();
         await userMediaRef.current.open();
       }
       userMediaRef.current.connect(recorderRef.current!);
@@ -220,12 +226,12 @@ export function useAudioEngine() {
     setIsRecording(false);
     
     const url = URL.createObjectURL(recording);
-    const player = new Tone.Player();
+    const player = new Player();
     await player.load(url);
     const duration = player.buffer.duration;
     
     const id = `track-${Date.now()}`;
-    const channel = new Tone.Channel(0, 0).toDestination();
+    const channel = new Channel(0, 0).toDestination();
     player.connect(channel);
 
     const newTrack: Track = {
@@ -265,7 +271,7 @@ export function useAudioEngine() {
         const endSample = Math.floor(endTime * audioBuffer.sampleRate);
         const newLength = endSample - startSample;
         
-        const newAudioBuffer = Tone.context.rawContext.createBuffer(
+        const newAudioBuffer = context.rawContext.createBuffer(
             audioBuffer.numberOfChannels,
             newLength,
             audioBuffer.sampleRate
@@ -280,7 +286,7 @@ export function useAudioEngine() {
         const wavBlob = bufferToWave(newAudioBuffer);
         const newUrl = URL.createObjectURL(wavBlob);
         
-        const newPlayer = new Tone.Player();
+        const newPlayer = new Player();
         await newPlayer.load(newUrl);
         const newDuration = newPlayer.buffer.duration;
 
@@ -328,15 +334,15 @@ export function useAudioEngine() {
             return;
         }
   
-      const offlineBuffer = await Tone.Offline(async (offlineContext) => {
+      const offlineBuffer = await Offline(async () => {
         const contextPlayers = validTracks.map(track => {
-            const player = new Tone.Player(track.url!).toDestination();
+            const player = new Player(track.url!).toDestination();
             player.volume.value = track.volume;
             player.pan.value = track.pan;
             player.start(0);
             return player;
         });
-        await Tone.loaded();
+        await loaded();
 
       }, duration);
   
@@ -376,12 +382,12 @@ export function useAudioEngine() {
         const newEffectNodes = track.effects.map((effect, index) => {
           let node: EffectNode | null = null;
           switch (effect.type) {
-            case 'reverb': node = new Tone.Reverb({ wet: effect.wet }); break;
-            case 'delay': node = new Tone.FeedbackDelay({ wet: effect.wet }); break;
-            case 'distortion': node = new Tone.Distortion({ wet: effect.wet }); break;
-            case 'chorus': node = new Tone.Chorus({ wet: effect.wet }); break;
-            case 'flanger': node = new Tone.Flanger({ wet: effect.wet }); break;
-            case 'phaser': node = new Tone.Phaser({ wet: effect.wet }); break;
+            case 'reverb': node = new Reverb({ wet: effect.wet }); break;
+            case 'delay': node = new FeedbackDelay({ wet: effect.wet }); break;
+            case 'distortion': node = new Distortion({ wet: effect.wet }); break;
+            case 'chorus': node = new Chorus({ wet: effect.wet }); break;
+            case 'flanger': node = new Flanger({ wet: effect.wet }); break;
+            case 'phaser': node = new Phaser({ wet: effect.wet }); break;
           }
           if (node) {
             track.effects[index].node = node; // Update the node reference in the effect object
@@ -424,3 +430,5 @@ export function useAudioEngine() {
     trimTrack,
   };
 }
+
+    

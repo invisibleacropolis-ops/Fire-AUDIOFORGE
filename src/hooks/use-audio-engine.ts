@@ -2,14 +2,23 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Player, Channel, Transport, start, context, Recorder, UserMedia } from 'tone';
-import { loaded } from 'tone';
-import { Reverb } from '@/lib/tone/Reverb.js';
-import { FeedbackDelay } from '@/lib/tone/FeedbackDelay.js';
-import { Distortion } from '@/lib/tone/Distortion.js';
-import { Chorus } from '@/lib/tone/Chorus.js';
-import { Flanger } from '@/lib/tone/Flanger.js';
-import { Phaser } from '@/lib/tone/Phaser.js';
+import { 
+  Player,
+  Channel,
+  Recorder,
+  UserMedia,
+  start,
+  Transport,
+  Offline,
+  context as ToneContext,
+  loaded
+} from 'tone';
+import Reverb from 'tone/esm/effect/Reverb';
+import FeedbackDelay from 'tone/esm/effect/FeedbackDelay';
+import Distortion from 'tone/esm/effect/Distortion';
+import Chorus from 'tone/esm/effect/Chorus';
+import Flanger from 'tone/esm/effect/Flanger';
+import Phaser from 'tone/esm/effect/Phaser';
 import { useToast } from './use-toast';
 
 // Type definitions
@@ -129,7 +138,7 @@ export function useAudioEngine() {
   }, []);
 
   const startAudioContext = useCallback(async () => {
-    if (context.state !== 'running') {
+    if (ToneContext.state !== 'running') {
         await start();
     }
     setIsStarted(true);
@@ -194,7 +203,7 @@ export function useAudioEngine() {
   }, [toast]);
   
   const togglePlayback = useCallback(async () => {
-    if (context.state !== 'running') {
+    if (ToneContext.state !== 'running') {
       await start();
     }
     if (Transport.state === 'started') {
@@ -272,7 +281,7 @@ export function useAudioEngine() {
         const endSample = Math.floor(endTime * audioBuffer.sampleRate);
         const newLength = endSample - startSample;
         
-        const newAudioBuffer = context.rawContext.createBuffer(
+        const newAudioBuffer = ToneContext.rawContext.createBuffer(
             audioBuffer.numberOfChannels,
             newLength,
             audioBuffer.sampleRate
@@ -383,18 +392,18 @@ export function useAudioEngine() {
         const newEffectNodes = track.effects.map((effect, index) => {
           let node: EffectNode | null = null;
           switch (effect.type) {
-            case 'reverb': node = new Reverb({ wet: effect.wet, context: context }); break;
-            case 'delay': node = new FeedbackDelay({ wet: effect.wet, context: context }); break;
-            case 'distortion': node = new Distortion({ wet: effect.wet, context: context }); break;
-            case 'chorus': node = new Chorus({ wet: effect.wet, context: context }); break;
-            case 'flanger': node = new Flanger({ wet: effect.wet, context: context }); break;
-            case 'phaser': node = new Phaser({ wet: effect.wet, context: context }); break;
+            case 'reverb': node = new Reverb({ wet: effect.wet, context: ToneContext }); break;
+            case 'delay': node = new FeedbackDelay({ wet: effect.wet, context: ToneContext }); break;
+            case 'distortion': node = new Distortion({ wet: effect.wet, context: ToneContext }); break;
+            case 'chorus': node = new Chorus({ wet: effect.wet, context: ToneContext }); break;
+            case 'flanger': node = new Flanger({ wet: effect.wet, context: ToneContext }); break;
+            case 'phaser': node = new Phaser({ wet: effect.wet, context: ToneContext }); break;
           }
           if (node) {
             track.effects[index].node = node; // Update the node reference in the effect object
           }
           return node;
-        }).filter((node): node is NonNullable<EffectNode> => node !== null);
+        }).filter(node => node !== null) as EffectNode[];
         
         if (newEffectNodes.length > 0) {
             track.player.chain(...newEffectNodes, track.channel);
@@ -431,5 +440,3 @@ export function useAudioEngine() {
     trimTrack,
   };
 }
-
-    

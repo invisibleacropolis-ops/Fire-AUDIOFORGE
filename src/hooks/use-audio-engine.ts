@@ -33,6 +33,58 @@ export type Track = {
   duration: number | null;
 };
 
+function instantiateEffectNode(effect: Effect): EffectNode | null {
+  let node: EffectNode | null = null;
+
+  switch (effect.type) {
+    case 'reverb':
+      node = new Tone.Reverb({
+        wet: effect.wet,
+        decay: effect.decay ?? 1.5,
+        preDelay: effect.preDelay ?? 0.01,
+      });
+      break;
+    case 'delay':
+      node = new Tone.FeedbackDelay({
+        wet: effect.wet,
+        delayTime: effect.delayTime ?? 0.25,
+        feedback: effect.feedback ?? 0.5,
+      });
+      break;
+    case 'distortion':
+      node = new Tone.Distortion({
+        wet: effect.wet,
+        distortion: effect.distortion ?? 0.4,
+      });
+      break;
+    case 'chorus':
+      node = new Tone.Chorus({
+        wet: effect.wet,
+        frequency: effect.frequency ?? 1.5,
+        delayTime: effect.delayTime ?? 3.5,
+        depth: effect.depth ?? 0.7,
+      });
+      break;
+    case 'phaser':
+      node = new Tone.Phaser({
+        wet: effect.wet,
+        frequency: effect.frequency ?? 0.5,
+        octaves: effect.octaves ?? 3,
+        baseFrequency: effect.baseFrequency ?? 350,
+      });
+      break;
+    case 'vibrato':
+      node = new Tone.Vibrato({
+        wet: effect.wet,
+        frequency: effect.frequency ?? 5,
+        depth: effect.depth ?? 0.1,
+      });
+      break;
+  }
+
+  return node;
+}
+
 // Helper to convert AudioBuffer to WAV
 function bufferToWave(abuffer: AudioBuffer): Blob {
     const numOfChan = abuffer.numberOfChannels;
@@ -317,9 +369,13 @@ export function useAudioEngine() {
     
     try {
         const hasSolo = tracksRef.current.some(t => t.isSoloed);
-        const tracksToExport = hasSolo ? tracksRef.current.filter(t => t.isSoloed) : tracksRef.current;
+        const preparedTracks = tracksRef.current.filter(
+          t => t.player && t.player.loaded && t.url
+        );
 
-        const validTracks = tracksToExport.filter(t => t.player && t.player.loaded && !t.isMuted);
+        const validTracks = preparedTracks.filter(t =>
+          hasSolo ? t.isSoloed : !t.isMuted
+        );
 
         if(validTracks.length === 0) {
             toast({ title: 'Nothing to export', description: 'No audible tracks to export.', variant: 'destructive'});
@@ -334,15 +390,29 @@ export function useAudioEngine() {
         }
   
       const offlineBuffer = await Tone.Offline(async () => {
-        const contextPlayers = validTracks.map(track => {
-            const player = new Tone.Player(track.url!).toDestination();
-            player.volume.value = track.volume;
-            player.pan.value = track.pan;
-            player.start(0);
-            return player;
-        });
-        await Tone.loaded();
+        validTracks.forEach(track => {
+          const channel = new Tone.Channel();
+          channel.volume.value = track.volume;
+          channel.pan.value = track.pan;
+          channel.mute = hasSolo ? !track.isSoloed : track.isMuted;
+          channel.toDestination();
 
+          const effectNodes = track.effects
+            .map(instantiateEffectNode)
+            .filter((node): node is EffectNode => node !== null);
+
+          const player = new Tone.Player(track.url!);
+
+          if (effectNodes.length > 0) {
+            player.chain(...effectNodes, channel);
+          } else {
+            player.connect(channel);
+          }
+
+          player.start(0);
+        });
+
+        await Tone.loaded();
       }, duration);
   
       const wavBlob = bufferToWave(offlineBuffer);
@@ -377,58 +447,15 @@ export function useAudioEngine() {
         track.player.disconnect();
 
         // Create new effect nodes
-        const newEffectNodes = track.effects.map((effect, index) => {
-          let node: EffectNode | null = null;
-          switch (effect.type) {
-            case 'reverb': 
-              node = new Tone.Reverb({
-                wet: effect.wet,
-                decay: effect.decay || 1.5,
-                preDelay: effect.preDelay || 0.01,
-              }); 
-              break;
-            case 'delay': 
-              node = new Tone.FeedbackDelay({
-                wet: effect.wet,
-                delayTime: effect.delayTime || 0.25,
-                feedback: effect.feedback || 0.5,
-              }); 
-              break;
-            case 'distortion': 
-              node = new Tone.Distortion({
-                wet: effect.wet,
-                distortion: effect.distortion || 0.4,
-              }); 
-              break;
-            case 'chorus': 
-              node = new Tone.Chorus({
-                wet: effect.wet,
-                frequency: effect.frequency || 1.5,
-                delayTime: effect.delayTime || 3.5,
-                depth: effect.depth || 0.7,
-              }); 
-              break;
-            case 'phaser': 
-              node = new Tone.Phaser({
-                wet: effect.wet,
-                frequency: effect.frequency || 0.5,
-                octaves: effect.octaves || 3,
-                baseFrequency: effect.baseFrequency || 350,
-              }); 
-              break;
-            case 'vibrato':
-                node = new Tone.Vibrato({
-                    wet: effect.wet,
-                    frequency: effect.frequency || 5,
-                    depth: effect.depth || 0.1,
-                });
-                break;
-          }
-          if (node) {
-            track.effects[index].node = node;
-          }
-          return node;
-        }).filter(node => node !== null) as EffectNode[];
+        const newEffectNodes = track.effects
+          .map((effect, index) => {
+            const node = instantiateEffectNode(effect);
+            if (node) {
+              track.effects[index].node = node;
+            }
+            return node;
+          })
+          .filter((node): node is EffectNode => node !== null);
         
         if (newEffectNodes.length > 0) {
             track.player.chain(...newEffectNodes, track.channel);

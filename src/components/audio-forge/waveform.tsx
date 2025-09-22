@@ -5,23 +5,29 @@ import React, { useRef, useEffect, useCallback, useState, memo } from 'react';
 import * as Tone from 'tone';
 
 interface WaveformProps {
+  trackId: string;
   url?: string;
-  onSelectionChange?: (selection: { start: number; end: number } | null) => void;
+  selection: { start: number; end: number } | null;
+  onSelectionChange?: (trackId: string, selection: { start: number; end: number } | null) => void;
   duration: number | null;
 }
 
-const WaveformComponent: React.FC<WaveformProps> = ({ url, onSelectionChange, duration }) => {
+const WaveformComponent: React.FC<WaveformProps> = ({ trackId, url, onSelectionChange, duration, selection: selectionProp }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [waveform, setWaveform] = useState<Float32Array | null>(null);
-  const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
+  const [selection, setSelection] = useState<{ start: number; end: number } | null>(selectionProp);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef(0);
+
+  useEffect(() => {
+    setSelection(selectionProp);
+  }, [selectionProp]);
 
   useEffect(() => {
     if (!url) {
       setWaveform(null);
       setSelection(null);
-      onSelectionChange?.(null);
+      onSelectionChange?.(trackId, null);
       return;
     }
 
@@ -42,12 +48,12 @@ const WaveformComponent: React.FC<WaveformProps> = ({ url, onSelectionChange, du
 
     // Reset selection when URL changes
     setSelection(null);
-    onSelectionChange?.(null);
+    onSelectionChange?.(trackId, null);
 
     return () => {
       mounted = false;
     };
-  }, [url, onSelectionChange]);
+  }, [url, onSelectionChange, trackId]);
   
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -139,10 +145,10 @@ const WaveformComponent: React.FC<WaveformProps> = ({ url, onSelectionChange, du
     if (!isDragging) return;
     setIsDragging(false);
     if (selection && selection.start !== selection.end) {
-      onSelectionChange?.(selection);
+      onSelectionChange?.(trackId, selection);
     } else {
       setSelection(null);
-      onSelectionChange?.(null);
+      onSelectionChange?.(trackId, null);
     }
   };
   

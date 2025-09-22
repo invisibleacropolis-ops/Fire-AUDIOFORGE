@@ -22,6 +22,7 @@ export default function AudioForge() {
     startRecording,
     stopRecording,
     updateTrack,
+    setTrackSelection,
     exportProject,
     importAudio,
     trimTrack,
@@ -84,6 +85,7 @@ export default function AudioForge() {
             onTrackPlayPause={toggleTrackPlayback}
             onTrackStop={stopTrackPlayback}
             onTrackRecord={toggleTrackRecording}
+            onSelectionChange={setTrackSelection}
           />
         </div>
         <EffectsPanel track={selectedTrack} onTrackUpdate={updateTrack} />

@@ -1,9 +1,10 @@
+
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Track, Effect, EffectType } from '@/hooks/use-audio-engine';
 import { Button } from '../ui/button';
-import { Plus, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Label } from '../ui/label';
 import { Slider } from '../ui/slider';
@@ -13,12 +14,103 @@ interface EffectsPanelProps {
   onTrackUpdate: (id: string, updates: Partial<Track>) => void;
 }
 
-const effectTypes: EffectType[] = ['reverb', 'delay', 'distortion', 'chorus', 'flanger', 'phaser'];
+const effectTypes: EffectType[] = ['reverb', 'delay', 'distortion', 'chorus', 'phaser', 'vibrato'];
 
 function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpdate: (id: string, params: any) => void, onRemove: (id: string) => void }) {
     const handleWetChange = (value: number[]) => {
         onUpdate(effect.id, { wet: value[0] });
     };
+    
+    const handleParamChange = (param: string) => (value: number[]) => {
+        onUpdate(effect.id, { [param]: value[0] });
+    };
+
+    const renderParamControls = () => {
+        switch(effect.type) {
+            case 'reverb':
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Decay</Label>
+                            <Slider defaultValue={[1.5]} onValueChange={handleParamChange('decay')} max={10} min={0.1} step={0.1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Pre-delay</Label>
+                            <Slider defaultValue={[0.01]} onValueChange={handleParamChange('preDelay')} max={1} min={0} step={0.01} />
+                        </div>
+                    </>
+                );
+            case 'delay':
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Delay Time</Label>
+                            <Slider defaultValue={[0.25]} onValueChange={handleParamChange('delayTime')} max={1} min={0} step={0.01} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Feedback</Label>
+                            <Slider defaultValue={[0.5]} onValueChange={handleParamChange('feedback')} max={1} min={0} step={0.01} />
+                        </div>
+                    </>
+                );
+            case 'distortion':
+                return (
+                    <div className="space-y-2">
+                        <Label className="text-xs">Amount</Label>
+                        <Slider defaultValue={[0.4]} onValueChange={handleParamChange('distortion')} max={1} min={0} step={0.01} />
+                    </div>
+                );
+            case 'chorus':
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Frequency</Label>
+                            <Slider defaultValue={[1.5]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Delay Time</Label>
+                            <Slider defaultValue={[3.5]} onValueChange={handleParamChange('delayTime')} max={10} min={1} step={0.1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Depth</Label>
+                            <Slider defaultValue={[0.7]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
+                        </div>
+                    </>
+                );
+            case 'phaser':
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Frequency</Label>
+                            <Slider defaultValue={[0.5]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Octaves</Label>
+                            <Slider defaultValue={[3]} onValueChange={handleParamChange('octaves')} max={8} min={1} step={1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Base Frequency</Label>
+                            <Slider defaultValue={[350]} onValueChange={handleParamChange('baseFrequency')} max={1000} min={100} step={10} />
+                        </div>
+                    </>
+                );
+            case 'vibrato':
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Frequency</Label>
+                            <Slider defaultValue={[5]} onValueChange={handleParamChange('frequency')} max={20} min={0.1} step={0.1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Depth</Label>
+                            <Slider defaultValue={[0.1]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
+                        </div>
+                    </>
+                );
+            default: 
+                return null;
+        }
+    }
 
     return (
         <Card className="bg-muted/50">
@@ -28,11 +120,12 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <Trash2 className="h-4 w-4"/>
                 </Button>
             </CardHeader>
-            <CardContent className="p-3 pt-0">
+            <CardContent className="p-3 pt-0 space-y-3">
                 <div className="space-y-2">
                     <Label className="text-xs">Wet/Dry</Label>
                     <Slider value={[effect.wet]} onValueChange={handleWetChange} max={1} min={0} step={0.01} />
                 </div>
+                {renderParamControls()}
             </CardContent>
         </Card>
     );

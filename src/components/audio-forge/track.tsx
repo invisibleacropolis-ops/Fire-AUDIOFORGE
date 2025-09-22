@@ -1,7 +1,6 @@
 
 "use client";
 
-import { useState } from 'react';
 import type { Track as TrackType } from '@/hooks/use-audio-engine';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +22,7 @@ interface TrackProps {
   onPlayPause: (id: string) => void;
   onStop: (id: string) => void;
   onRecord: (id: string) => void;
+  onSelectionChange: (id: string, selection: { start: number; end: number } | null) => void;
 }
 
 export function Track({
@@ -35,8 +35,12 @@ export function Track({
   onPlayPause,
   onStop,
   onRecord,
+  onSelectionChange,
 }: TrackProps) {
-  const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
+  const selection =
+    track.selectionStart !== null && track.selectionEnd !== null
+      ? { start: track.selectionStart, end: track.selectionEnd }
+      : null;
 
   const handleVolumeChange = (value: number[]) => {
     onUpdate(track.id, { volume: value[0] });
@@ -62,7 +66,7 @@ export function Track({
     e.stopPropagation();
     if (selection && track) {
       onTrim(track.id, selection.start, selection.end);
-      setSelection(null);
+      onSelectionChange(track.id, null);
     }
   };
 
@@ -201,7 +205,7 @@ export function Track({
               size="sm"
               variant="outline"
               className="w-full"
-              disabled={!selection || (selection.start === selection.end)}
+              disabled={!selection}
               onClick={handleTrim}
             >
               <Scissors />
@@ -211,9 +215,11 @@ export function Track({
         </div>
         <div className="flex-1">
           <Waveform
+            trackId={track.id}
             url={track.url}
             duration={track.duration}
-            onSelectionChange={setSelection}
+            selection={selection}
+            onSelectionChange={onSelectionChange}
           />
         </div>
       </CardContent>

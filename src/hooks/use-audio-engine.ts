@@ -33,6 +33,8 @@ export type Track = {
   duration: number | null;
   isPlaying: boolean;
   isRecording: boolean;
+  selectionStart: number | null;
+  selectionEnd: number | null;
 };
 
 function instantiateEffectNode(effect: Effect): EffectNode | null {
@@ -191,6 +193,8 @@ export function useAudioEngine() {
       duration: null,
       isPlaying: false,
       isRecording: false,
+      selectionStart: null,
+      selectionEnd: null,
     };
     setTracks(prev => [...prev, newTrack]);
     return id;
@@ -199,6 +203,23 @@ export function useAudioEngine() {
   const updateTrack = useCallback((id: string, updates: Partial<Track>) => {
     setTracks(prev => prev.map(t => (t.id === id ? { ...t, ...updates } : t)));
   }, []);
+
+  const setTrackSelection = useCallback(
+    (id: string, selection: { start: number; end: number } | null) => {
+      setTracks(prev =>
+        prev.map(t =>
+          t.id === id
+            ? {
+                ...t,
+                selectionStart: selection ? selection.start : null,
+                selectionEnd: selection ? selection.end : null,
+              }
+            : t
+        )
+      );
+    },
+    []
+  );
 
   const importAudio = useCallback(async (file: File): Promise<string | null> => {
     try {
@@ -226,6 +247,8 @@ export function useAudioEngine() {
         duration,
         isPlaying: false,
         isRecording: false,
+        selectionStart: null,
+        selectionEnd: null,
       };
 
       setTracks(prev => [...prev, newTrack]);
@@ -318,6 +341,8 @@ export function useAudioEngine() {
             duration,
             isRecording: false,
             isPlaying: false,
+            selectionStart: null,
+            selectionEnd: null,
           }
         : t
     )));
@@ -358,6 +383,8 @@ export function useAudioEngine() {
       duration,
       isPlaying: false,
       isRecording: false,
+      selectionStart: null,
+      selectionEnd: null,
     };
     setTracks(prev => [...prev, newTrack]);
     toast({ title: 'Recording finished', description: 'New track added.' });
@@ -398,48 +425,107 @@ export function useAudioEngine() {
     }
   }, [isRecording, recordingTrackId, startTrackRecording, stopTrackRecording]);
 
-  const toggleTrackPlayback = useCallback(async (trackId: string) => {
-    const track = tracksRef.current.find(t => t.id === trackId);
-    if (!track || !track.player) {
-      return;
-    }
+  const getTrackSelectionBounds = useCallback(
+    (track: Track): { start: number; end: number | null; duration: number | undefined } => {
+      const bufferDuration = track.player?.buffer?.duration ?? track.duration ?? 0;
+      const start = Math.max(0, Math.min(track.selectionStart ?? 0, bufferDuration));
 
-    const context = Tone.getContext();
-    if (context.state !== 'running') {
-      await Tone.start();
-    }
+      if (!bufferDuration) {
+        return { start: 0, end: null, duration: undefined };
+      }
 
-    if (track.player.state === 'started') {
+      if (track.selectionEnd == null) {
+        const remaining = bufferDuration - start;
+        return {
+          start,
+          end: null,
+          duration: remaining > 0 ? remaining : undefined,
+        };
+      }
+
+      const clampedEnd = Math.max(start, Math.min(track.selectionEnd, bufferDuration));
+      if (clampedEnd <= start) {
+        const remaining = bufferDuration - start;
+        return {
+          start,
+          end: null,
+          duration: remaining > 0 ? remaining : undefined,
+        };
+      }
+
+      return {
+        start,
+        end: clampedEnd,
+        duration: clampedEnd - start,
+      };
+    },
+    []
+  );
+
+  const toggleTrackPlayback = useCallback(
+    async (trackId: string) => {
+      const track = tracksRef.current.find(t => t.id === trackId);
+      if (!track || !track.player) {
+        return;
+      }
+
+      const context = Tone.getContext();
+      if (context.state !== 'running') {
+        await Tone.start();
+      }
+
+      const { start, duration } = getTrackSelectionBounds(track);
+
+      if (track.player.state === 'started') {
+        track.player.stop();
+        track.player.seek(start);
+        setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+        return;
+      }
+
       track.player.stop();
-      track.player.seek(0);
-      setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
-    } else {
-      track.player.start();
+      track.player.seek(start);
+      track.player.onstop = () => {
+        setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+        if (track.player) {
+          track.player.onstop = null;
+        }
+      };
+      track.player.start(undefined, start, duration);
       setTracks(prev => prev.map(t => ({ ...t, isPlaying: t.id === trackId })));
-    }
-  }, []);
+    },
+    [getTrackSelectionBounds]
+  );
 
-  const stopTrackPlayback = useCallback((trackId: string) => {
-    const track = tracksRef.current.find(t => t.id === trackId);
-    if (!track?.player) {
-      return;
-    }
+  const stopTrackPlayback = useCallback(
+    (trackId: string) => {
+      const track = tracksRef.current.find(t => t.id === trackId);
+      if (!track?.player) {
+        return;
+      }
 
-    track.player.stop();
-    track.player.seek(0);
-    setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
-  }, []);
+      const { start } = getTrackSelectionBounds(track);
+      track.player.stop();
+      track.player.seek(start);
+      setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+    },
+    [getTrackSelectionBounds]
+  );
 
-  const rewindTrack = useCallback((trackId: string) => {
-    const track = tracksRef.current.find(t => t.id === trackId);
-    if (!track?.player) {
-      return;
-    }
+  const rewindTrack = useCallback(
+    (trackId: string) => {
+      const track = tracksRef.current.find(t => t.id === trackId);
+      if (!track?.player) {
+        return;
+      }
 
-    track.player.stop();
-    track.player.seek(0);
-    setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
-  }, []);
+      const { start } = getTrackSelectionBounds(track);
+      track.player.stop();
+      track.player.seek(start);
+      setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+    },
+    [getTrackSelectionBounds]
+  );
 
   const trimTrack = useCallback(async (trackId: string, startTime: number, endTime: number) => {
     const track = tracksRef.current.find(t => t.id === trackId);
@@ -490,6 +576,8 @@ export function useAudioEngine() {
             player: newPlayer,
             url: newUrl,
             duration: newDuration,
+            selectionStart: null,
+            selectionEnd: null,
         });
 
         toast({ title: 'Track trimmed successfully' });
@@ -621,6 +709,7 @@ export function useAudioEngine() {
     isRecording,
     addTrack,
     updateTrack,
+    setTrackSelection,
     importAudio,
     togglePlayback,
     stopPlayback,

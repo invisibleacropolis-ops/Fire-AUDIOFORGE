@@ -18,6 +18,7 @@ interface TrackViewProps {
   onTrackPlayPause: (id: string) => void;
   onTrackStop: (id: string) => void;
   onTrackRecord: (id: string) => void;
+  onSelectionChange: (id: string, selection: { start: number; end: number } | null) => void;
 }
 
 export function TrackView({
@@ -31,6 +32,7 @@ export function TrackView({
   onTrackPlayPause,
   onTrackStop,
   onTrackRecord,
+  onSelectionChange,
 }: TrackViewProps) {
   return (
     <div className="flex-1 flex flex-col bg-background p-4 gap-4 overflow-hidden">
@@ -55,6 +57,7 @@ export function TrackView({
                 onPlayPause={onTrackPlayPause}
                 onStop={onTrackStop}
                 onRecord={onTrackRecord}
+                onSelectionChange={onSelectionChange}
               />
             ))
           ) : (

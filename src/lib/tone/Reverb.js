@@ -1,8 +1,8 @@
 
-import { Effect } from "tone/build/esm/effect/Effect";
-import { Convolver } from "tone/build/esm/component/channel/Convolver";
-import { optionsFromArguments } from "tone/build/esm/core/util/Defaults";
-import { readOnly } from "tone/build/esm/core/util/Interface";
+import { Effect } from "./effect/Effect.js";
+import { Convolver } from "./component/channel/Convolver.js";
+import { optionsFromArguments } from "./core/util/Defaults.js";
+import { readOnly } from "./core/util/Interface.js";
 /**
  * Reverb is an algorithmic reverb built on {@link Freeverb} and {@link JCReverb}.
  * In addition to those two famous reverb algorithms, Reverb also has a convolution
@@ -65,4 +65,3 @@ export class Reverb extends Effect {
         return this;
     }
 }
-

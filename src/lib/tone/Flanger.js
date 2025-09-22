@@ -1,11 +1,11 @@
 
-import { LFO } from "tone/build/esm/source/LFO";
-import { optionsFromArguments } from "tone/build/esm/core/util/Defaults";
-import { readOnly } from "tone/build/esm/core/util/Interface";
-import { isNumber } from "tone/build/esm/core/util/Type";
+import { LFO } from "./source/LFO.js";
+import { optionsFromArguments } from "./core/util/Defaults.js";
+import { readOnly } from "./core/util/Interface.js";
+import { isNumber } from "./core/util/Type.js";
 import {
 	StereoXFeedbackEffect,
-} from "tone/build/esm/effect/StereoXFeedbackEffect";
+} from "./effect/StereoXFeedbackEffect.js";
 /**
  * Flanger is a stereo flanger effect with feedback.
  *

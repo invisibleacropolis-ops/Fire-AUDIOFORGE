@@ -1,14 +1,14 @@
 
-import { Allpass } from "tone/build/esm/component/filter/Allpass";
-import { optionsFromArguments } from "tone/build/esm/core/util/Defaults";
-import { readOnly } from "tone/build/esm/core/util/Interface";
-import { isNumber } from "tone/build/esm/core/util/Type";
+import { Allpass } from "./component/filter/Allpass.js";
+import { optionsFromArguments } from "./core/util/Defaults.js";
+import { readOnly } from "./core/util/Interface.js";
+import { isNumber } from "./core/util/Type.js";
 import {
 	StereoEffect,
-} from "tone/build/esm/effect/StereoEffect";
-import { LFO } from "tone/build/esm/source/LFO";
-import { Signal } from "tone/build/esm/signal/Signal";
-import { Gain } from "tone/build/esm/core/context/Gain";
+} from "./effect/StereoEffect.js";
+import { LFO } from "./source/LFO.js";
+import { Signal } from "./signal/Signal.js";
+import { Gain } from "./core/context/Gain.js";
 /**
  * Phaser is a phaser effect. It uses a series of Allpass filters
  * to create a series of phase-shifted signals.

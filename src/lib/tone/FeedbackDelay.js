@@ -1,12 +1,12 @@
 
-import { Delay } from "tone/build/esm/core/context/Delay";
-import { optionsFromArguments } from "tone/build/esm/core/util/Defaults";
-import { readOnly } from "tone/build/esm/core/util/Interface";
-import { Signal } from "tone/build/esm/signal/Signal";
-import { Gain } from "tone/build/esm/core/context/Gain";
+import { Delay } from "./core/context/Delay.js";
+import { optionsFromArguments } from "./core/util/Defaults.js";
+import { readOnly } from "./core/util/Interface.js";
+import { Signal } from "./signal/Signal.js";
+import { Gain } from "./core/context/Gain.js";
 import {
 	Effect,
-} from "tone/build/esm/effect/Effect";
+} from "./effect/Effect.js";
 /**
  * FeedbackDelay is a DelayNode with a feedback loop.
  *

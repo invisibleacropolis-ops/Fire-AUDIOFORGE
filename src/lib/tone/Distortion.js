@@ -1,10 +1,10 @@
 
-import { WaveShaper } from "tone/build/esm/signal/WaveShaper";
-import { optionsFromArguments } from "tone/build/esm/core/util/Defaults";
-import { readOnly } from "tone/build/esm/core/util/Interface";
+import { WaveShaper } from "./signal/WaveShaper.js";
+import { optionsFromArguments } from "./core/util/Defaults.js";
+import { readOnly } from "./core/util/Interface.js";
 import {
 	Effect,
-} from "tone/build/esm/effect/Effect";
+} from "./effect/Effect.js";
 /**
  * A simple distortion effect using a `WaveShaper` node.
  *

@@ -1,6 +1,6 @@
 
 import { Emitter } from "./Emitter.js";
-import { now } from "../context/Context.js";
+import { getContext } from "../Global.js";
 import { optionsFromArguments } from "./Defaults.js";
 import { Timeline } from "./Timeline.js";
 
@@ -73,6 +73,7 @@ export class Draw extends Emitter {
      * The draw loop
      */
     _loop() {
+        const now = () => getContext().now();
         // the last loop time
         let lastLoop = now();
         const loopFn = () => {
@@ -101,3 +102,5 @@ export class Draw extends Emitter {
         return this;
     }
 }
+
+    

@@ -1,6 +1,7 @@
 
 import { getContext } from "../Global.js";
 import { isNumber, isString } from "../util/Type.js";
+
 /**
  * TimeBase is a flexible encoding of time which can be evaluated to and from a string.
  */
@@ -23,6 +24,7 @@ export class TimeBase {
             this.fromParts(value, units);
         }
     }
+
     /**
      * All of the time encodings supported by Time.
      */
@@ -84,12 +86,14 @@ export class TimeBase {
             }
         };
     }
+
     /**
      * The default units.
      */
     get _defaultUnits() {
         return this.constructor.defaultUnits;
     }
+
     /**
      * Test if the given value is a string.
      * @param value
@@ -97,6 +101,7 @@ export class TimeBase {
     _isString(value) {
         return isString(value);
     }
+
     /**
      * Test if the given value is a number
      * @param value
@@ -104,6 +109,7 @@ export class TimeBase {
     _isNumber(value) {
         return isNumber(value);
     }
+
     /**
      * Return the value of the time in the current units.
      */
@@ -113,24 +119,28 @@ export class TimeBase {
         }
         return this._val;
     }
+
     /**
      * Get the value of the duration in seconds.
      */
     toSeconds() {
         return this.valueOf();
     }
+
     /**
      * Return the value in hertz, alias for `toFrequency`
      */
     toFrequency() {
         return 1 / this.toSeconds();
     }
+
     /**
      * Return the time in samples.
      */
     toSamples() {
         return this.toSeconds() * this.context.sampleRate;
     }
+
     /**
      * Parse a time string into parts. Returns an array of parts.
      * @param time
@@ -149,12 +159,14 @@ export class TimeBase {
         // if it didn't match any of the expressions
         throw new Error(`TimeBase: unable to parse "${time}"`);
     }
+
     /**
      * Get all of the expressions
      */
     _getExpressions() {
         return this._expressions;
     }
+
     /**
      * Coerce a time expression to the same units as `this`.
      * @param value
@@ -162,6 +174,7 @@ export class TimeBase {
     _secondsToUnits(seconds) {
         return seconds;
     }
+
     /**
      * Get the current value of the time expression.
      */
@@ -192,6 +205,7 @@ export class TimeBase {
             return 0;
         }
     }
+
     /**
      * Set the time from the given seconds.
      */
@@ -200,6 +214,7 @@ export class TimeBase {
         this._units = undefined;
         return this;
     }
+
     /**
      * Set the time from the given parts.
      * @param value
@@ -211,6 +226,7 @@ export class TimeBase {
         this.valueOf();
         return this;
     }
+
     /**
      * Set the time from a time string which can have multiple components.
      * e.g. "1:2:3"
@@ -237,6 +253,7 @@ export class TimeBase {
         }
         return this.fromSeconds(totalSeconds);
     }
+
     /**
      * Convert a notation value to the current units.
      * @param notation
@@ -254,6 +271,7 @@ export class TimeBase {
         }
         return val;
     }
+
     /**
      * Convert from ticks to the current units
      * @param ticks
@@ -261,6 +279,7 @@ export class TimeBase {
     _ticksToUnits(ticks) {
         return ticks * (this._beatsToUnits(1) / this._getPPQ());
     }
+
     /**
      * Convert from transports to the current units
      * @param measures
@@ -275,6 +294,7 @@ export class TimeBase {
         }
         return total;
     }
+
     /**
      * Convert the given value from the type specified by the units
      * into the specified units.
@@ -284,6 +304,7 @@ export class TimeBase {
     _frequencyToUnits(val, units) {
         return 1 / new this.constructor(val, units).valueOf();
     }
+    
     /**
      * Convert a beat number to the seconds.
      * @param beats
@@ -291,12 +312,14 @@ export class TimeBase {
     _beatsToUnits(beats) {
         return (60 / this._getBpm()) * beats;
     }
+
     /**
      * Clone the current time object
      */
     clone() {
         return new this.constructor(this.valueOf());
     }
+    
     /**
      * Copy the values from another time object
      */
@@ -305,12 +328,14 @@ export class TimeBase {
         this._units = time._units;
         return this;
     }
+
     /**
      * Get the current transport.
      */
     get transport() {
         return this.context.transport;
     }
+
     /**
      * Get the current context.
      */
@@ -320,6 +345,7 @@ export class TimeBase {
     set context(context) {
         this._context = context;
     }
+
     dispose() {
         return this;
     }

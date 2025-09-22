@@ -3,6 +3,8 @@ import { getContext } from "../Global.js";
 import { isNumber, isString } from "../util/Type.js";
 import { TransportTime } from "./TransportTime.js";
 import { Ticks } from "./Ticks.js";
+import { TimeBase } from "./TimeBase.js";
+
 /**
  * Time is a primitive type for encoding and manipulating time quantities.
  *
@@ -16,17 +18,19 @@ import { Ticks } from "./Ticks.js";
  * new Time("1:2:0"); // 1 measure, 2 beats, 0 sixteenths
  * @category Unit
  */
-export class Time extends TransportTime {
+export class Time extends TimeBase {
     constructor(value, units) {
         super(value, units);
         this.name = "Time";
     }
+
     /**
      * The default units if none are provided.
      */
     static get defaultUnits() {
         return "s";
     }
+
     /**
      * Quantize the time by the given subdivision. Optionally add a percentage which will move
      * the time value towards the ideal quantized value by that percentage.
@@ -44,6 +48,7 @@ export class Time extends TransportTime {
         const diff = ideal - this.valueOf();
         return new Time(this.valueOf() + diff * percent);
     }
+
     /**
      * Add the given value to the time.
      * @param  val
@@ -52,6 +57,7 @@ export class Time extends TransportTime {
     add(val) {
         return new Time(this.valueOf() + this.toSeconds(val));
     }
+
     /**
      * Subtract the given value from the time.
      * @param  val
@@ -60,6 +66,7 @@ export class Time extends TransportTime {
     sub(val) {
         return new Time(this.valueOf() - this.toSeconds(val));
     }
+
     /**
      * Multiply the time by the given value.
      * @param  val
@@ -67,6 +74,7 @@ export class Time extends TransportTime {
     mult(val) {
         return new Time(this.valueOf() * val);
     }
+
     /**
      * Divide the time by the given value.
      * @param  val
@@ -74,39 +82,46 @@ export class Time extends TransportTime {
     div(val) {
         return new Time(this.valueOf() / val);
     }
+
     //-------------------------------------
     // 	CONVERSIONS
     //-------------------------------------
+
     /**
      * Return the time in samples
      */
     toSamples() {
         return this.toSeconds() * this.context.sampleRate;
     }
+
     /**
      * Return the time in hertz
      */
     toFrequency() {
         return 1 / this.toSeconds();
     }
+
     /**
      * Return the time in milliseconds.
      */
     toMilliseconds() {
         return this.toSeconds() * 1000;
     }
+
     /**
      * Evaluate the time value. Returns the time in seconds.
      */
     valueOf() {
         return this.toSeconds();
     }
+
     /**
      * @param expr
      */
     _noUnits(expr) {
         return expr;
     }
+    
     /**
      * @param expr
      */
@@ -141,9 +156,11 @@ export class Time extends TransportTime {
         }
         return seconds;
     }
+    
     _nowToSeconds(now) {
         return now + this.context.lookAhead;
     }
+    
     /**
      * @param expr
      * @param bpm
@@ -151,8 +168,9 @@ export class Time extends TransportTime {
     _ticksToSeconds(expr, bpm) {
         // Ticks are only useful in the context of the Transport
         const transport = getContext().transport;
-        return (new Ticks(expr, bpm)).toSeconds();
+        return (new Ticks(expr)).toSeconds();
     }
+
     /**
      * @param expr
      * @param bpm
@@ -161,7 +179,6 @@ export class Time extends TransportTime {
     _transportToSeconds(expr, bpm, timeSignature) {
         // TransportTime are only useful in the context of the Transport
         const transport = getContext().transport;
-        return (new TransportTime(expr, bpm, timeSignature)).toSeconds();
+        return (new TransportTime(expr)).toSeconds();
     }
 }
-//# sourceMappingURL=Time.js.map

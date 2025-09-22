@@ -4,7 +4,7 @@ import { optionsFromArguments } from "../util/Defaults.js";
 import { Timeline } from "../util/Timeline.js";
 import { Ticks } from "../type/Ticks.js";
 import { StateTimeline } from "../util/StateTimeline.js";
-import { getContext } from "../context/Context.js";
+import { getContext } from "../Global.js";
 /**
  * A sample-accurate clock which provides a callback at the given rate.
  * While `setInterval` is not sample-accurate and will drift over time,

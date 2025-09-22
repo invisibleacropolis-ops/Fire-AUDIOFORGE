@@ -6,7 +6,7 @@ import { Emitter } from "../util/Emitter.js";
 import { readOnly } from "../util/Interface.js";
 import { Timeline } from "../util/Timeline.js";
 import { StateTimeline } from "../util/StateTimeline.js";
-import { getContext } from "../context/Context.js";
+import { getContext } from "../Global.js";
 /**
  * Transport is the master timekeeper object of the entire application.
  * It is responsible for scheduling events in the future and synchronizing them.

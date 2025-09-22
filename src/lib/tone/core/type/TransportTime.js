@@ -2,6 +2,7 @@
 import { getContext } from "../Global.js";
 import { isNumber, isString } from "../util/Type.js";
 import { TimeBase } from "./TimeBase.js";
+
 /**
  * TransportTime is a the time along the Transport's
  * timeline. It is similar to {@link Time}, but it also has features which are
@@ -20,12 +21,14 @@ export class TransportTime extends TimeBase {
         this.name = "TransportTime";
         this.context = getContext();
     }
+
     /**
      * The default units if none are provided.
      */
     static get defaultUnits() {
         return "i";
     }
+
     /**
      * All of the time encodings supported by TransportTime.
      */
@@ -37,6 +40,7 @@ export class TransportTime extends TimeBase {
             },
         });
     }
+
     /**
      * Return the time in ticks.
      */
@@ -46,6 +50,7 @@ export class TransportTime extends TimeBase {
         const tickRate = quarters * quartersPerBeat;
         return this._seconds * tickRate;
     }
+
     /**
      * Return the time in seconds.
      * @return
@@ -54,18 +59,21 @@ export class TransportTime extends TimeBase {
         const quartersPerBeat = this._getBpm() / 60;
         return this._ticks / this._getPPQ() / quartersPerBeat;
     }
+    
     /**
      * Return the time in seconds.
      */
     valueOf() {
         return this.toSeconds();
     }
+    
     /**
      * Return the time in seconds.
      */
     _now() {
         return this.transport.seconds;
     }
+
     /**
      * Coerce a time expression to the same units as `this`.
      * @param value
@@ -73,6 +81,7 @@ export class TransportTime extends TimeBase {
     _secondsToUnits(seconds) {
         return this._beatsToUnits(seconds * (this._getBpm() / 60));
     }
+    
     /**
      * Convert a beat number to the seconds.
      * @param beats
@@ -81,18 +90,21 @@ export class TransportTime extends TimeBase {
         const quarterTime = this._getPPQ() / (4 / this._getTimeSignature());
         return Math.round(beats * quarterTime);
     }
+    
     /**
      * Get the current transport's BPM.
      */
     _getBpm() {
         return this.transport.bpm.value;
     }
+
     /**
      * Get the current transport's time signature.
      */
     _getTimeSignature() {
         return this.transport.timeSignature;
     }
+
     /**
      * Get the current transport's PPQ (Pulse Per Quarter).
      */
@@ -100,4 +112,3 @@ export class TransportTime extends TimeBase {
         return this.transport.PPQ;
     }
 }
-//# sourceMappingURL=TransportTime.js.map

@@ -1,5 +1,6 @@
 
 import { isObject, isUndef } from "./Type.js";
+import { ToneWithContext } from "../ToneWithContext.js";
 /**
  * Deeply merge the given objects. The first object is the destination.
  * Unlike `Object.assign`, this function will merge recursively.
@@ -66,7 +67,7 @@ export function optionsFromArguments(defaults, args, keys = [], objKey) {
     }
     return Object.assign(defaults, options);
 }
-import { ToneWithContext } from "../ToneWithContext.js";
+
 /**
  * Return this instances default values by calling `getDefaults` on the class,
  * then merging the values with the options object.

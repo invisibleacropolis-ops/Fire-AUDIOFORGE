@@ -1,11 +1,14 @@
 
 import { createAudioContext, createOfflineAudioContext, } from "./AudioContextFactory.js";
 import { close, resume, start } from "./ContextInitialization.js";
-import { isAudioContext } from "./OfflineContext.js";
+import { isAudioContext, isOfflineAudioContext } from "./OfflineContext.js";
 import { Ticker } from "./Ticker.js";
 import { Draw } from "../util/Draw.js";
 import { Transport } from "../clock/Transport.js";
 import { Emitter } from "../util/Emitter.js";
+import { Time } from "../type/Time.js";
+import { Frequency } from "../type/Frequency.js";
+import { Ticks } from "../type/Ticks.js";
 
 /**
  * This is a single AudioContext that is created and shared to all Tone.js objects.
@@ -21,6 +24,7 @@ export class BaseAudioContext extends Emitter {
     constructor() {
         super();
         this.isOffline = false;
+        this.A4 = 440;
     }
     /**
      * The time in seconds of the same oscillator source started at the same time.
@@ -41,10 +45,21 @@ export class BaseAudioContext extends Emitter {
      * The audio output destination.
      */
     get destination() {
-        return this.rawContext.destination;
+        if (!this._destination) {
+            this._destination = this.createGain();
+            this._destination.connect(this.rawContext.destination);
+        }
+        return this._destination;
     }
     set destination(dst) {
-        this.rawContext.destination = dst;
+        if (this._destination) {
+            this._destination.disconnect();
+        }
+        this._destination = dst;
+        // connect it to the raw context
+        if (this._destination) {
+            this._destination.connect(this.rawContext.destination);
+        }
     }
     /**
      * The sample rate of the audio context.
@@ -84,8 +99,12 @@ export class BaseAudioContext extends Emitter {
     /**
      * Close the context.
      */
-    close() {
-        return close(this);
+    async close() {
+        if (isAudioContext(this.rawContext) && this.state === "running") {
+            await this.rawContext.close();
+        }
+        // Then dispose all of the nodes
+        this.dispose();
     }
     /**
      * Resume the audio context. It is required to resume the audio context
@@ -215,6 +234,117 @@ export class BaseAudioContext extends Emitter {
     decodeAudioData(audioData) {
         return this.rawContext.decodeAudioData(audioData);
     }
+    /**
+     * Convert the time into seconds.
+     * @param time
+     */
+    toSeconds(time) {
+        return new Time(time, undefined, this).toSeconds();
+    }
+    /**
+     * Convert the time into ticks.
+     * @param time
+     */
+    toTicks(time) {
+        return new Ticks(time, undefined, this).toTicks();
+    }
+    /**
+     * Convert the time into samples.
+     * @param time
+     */
+    toSamples(time) {
+        return this.toSeconds(time) * this.sampleRate;
+    }
+    /**
+     * Convert the time into a frequency.
+     * @param time
+     */
+    toFrequency(time) {
+        return new Frequency(time, undefined, this).toFrequency();
+    }
+    /**
+     * Convert a frequency into a note name.
+     * @param frequency
+     */
+    frequencyToNote(frequency) {
+        return new Frequency(frequency).toNote();
+    }
+    /**
+     * Convert a midi note number into a frequency.
+     * @param midi
+     */
+    midiToFrequency(midi) {
+        return new Frequency(midi, "midi").toFrequency();
+    }
+    /**
+     * Convert a note name to a frequency.
+     * @param note
+     */
+    noteToFrequency(note) {
+        return new Frequency(note).toFrequency();
+    }
+    /**
+     * Convert a note name to a midi note number.
+     * @param note
+     */
+    noteToMidi(note) {
+        return new Frequency(note).toMidi();
+    }
+    /**
+     * Convert the given MIDI note number to a callback progress.
+     * @param midi
+     */
+    midiToNote(midi) {
+        return new Frequency(midi, "midi").toNote();
+    }
+    /**
+     * Convert the given frequency to a MIDI note number.
+     * @param frequency
+     */
+    frequencyToMidi(frequency) {
+        return new Frequency(frequency).toMidi();
+    }
+    /**
+     * Convert the given ticks to seconds
+     * @param ticks
+     */
+    ticksToSeconds(ticks) {
+        return new Ticks(ticks, undefined, this).toSeconds();
+    }
+    /**
+     * Convert the given ticks to bars.beats.sixteenths
+     * @param ticks
+     * @param timeSignature
+     */
+    ticksToBarsBeatsSixteenths(ticks, timeSignature) {
+        const beats = ticks / this.transport.PPQ;
+        const quarter = Math.floor(beats);
+        const sixteenth = Math.floor((beats - quarter) * 4);
+        const measures = Math.floor(quarter / timeSignature);
+        const sixteenths = sixteenth;
+        return `${measures}:${quarter % timeSignature}:${sixteenths}`;
+    }
+    /**
+     * Convert the given gain to dB.
+     * @param gain
+     */
+    gainToDb(gain) {
+        return 20 * (Math.log(gain) / Math.LN10);
+    }
+    /**
+     * Convert the given dB to gain.
+     * @param db
+     */
+    dbToGain(db) {
+        return Math.pow(10, db / 20);
+    }
+    /**
+     * Convert an interval (in semitones) to a frequency ratio.
+     * @param interval
+     */
+    intervalToFrequencyRatio(interval) {
+        return Math.pow(2, (interval / 12));
+    }
 }
 /**
  * A class for AudioContext specific stuff.
@@ -226,6 +356,7 @@ export class Context extends BaseAudioContext {
         this.name = "Context";
         this._ticker = new Ticker(() => this.emit("tick"));
         this.rawContext = createAudioContext(options);
+        this.on("tick", this._ticker.update.bind(this._ticker));
     }
     /**
      * The current audio context.

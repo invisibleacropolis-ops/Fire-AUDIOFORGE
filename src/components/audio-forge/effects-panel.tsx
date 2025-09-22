@@ -32,11 +32,11 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Decay</Label>
-                            <Slider value={[effect.decay]} onValueChange={handleParamChange('decay')} max={10} min={0.1} step={0.1} />
+                            <Slider value={[effect.decay ?? 1.5]} onValueChange={handleParamChange('decay')} max={10} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Pre-delay</Label>
-                            <Slider value={[effect.preDelay]} onValueChange={handleParamChange('preDelay')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.preDelay ?? 0.01]} onValueChange={handleParamChange('preDelay')} max={1} min={0} step={0.01} />
                         </div>
                     </>
                 );
@@ -45,11 +45,11 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Delay Time</Label>
-                            <Slider value={[effect.delayTime]} onValueChange={handleParamChange('delayTime')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.delayTime ?? 0.25]} onValueChange={handleParamChange('delayTime')} max={1} min={0} step={0.01} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Feedback</Label>
-                            <Slider value={[effect.feedback]} onValueChange={handleParamChange('feedback')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.feedback ?? 0.5]} onValueChange={handleParamChange('feedback')} max={1} min={0} step={0.01} />
                         </div>
                     </>
                 );
@@ -57,7 +57,7 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                 return (
                     <div className="space-y-2">
                         <Label className="text-xs">Amount</Label>
-                        <Slider value={[effect.distortion]} onValueChange={handleParamChange('distortion')} max={1} min={0} step={0.01} />
+                        <Slider value={[effect.distortion ?? 0.4]} onValueChange={handleParamChange('distortion')} max={1} min={0} step={0.01} />
                     </div>
                 );
             case 'chorus':
@@ -65,15 +65,15 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Frequency</Label>
-                            <Slider value={[effect.frequency]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
+                            <Slider value={[effect.frequency ?? 1.5]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Delay Time</Label>
-                            <Slider value={[effect.delayTime]} onValueChange={handleParamChange('delayTime')} max={10} min={1} step={0.1} />
+                            <Slider value={[effect.delayTime ?? 3.5]} onValueChange={handleParamChange('delayTime')} max={10} min={1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Depth</Label>
-                            <Slider value={[effect.depth]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.depth ?? 0.7]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
                         </div>
                     </>
                 );
@@ -82,15 +82,15 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Frequency</Label>
-                            <Slider value={[effect.frequency]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
+                            <Slider value={[effect.frequency ?? 0.5]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Octaves</Label>
-                            <Slider value={[effect.octaves]} onValueChange={handleParamChange('octaves')} max={8} min={1} step={1} />
+                            <Slider value={[effect.octaves ?? 3]} onValueChange={handleParamChange('octaves')} max={8} min={1} step={1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Base Frequency</Label>
-                            <Slider value={[effect.baseFrequency]} onValueChange={handleParamChange('baseFrequency')} max={1000} min={100} step={10} />
+                            <Slider value={[effect.baseFrequency ?? 350]} onValueChange={handleParamChange('baseFrequency')} max={1000} min={100} step={10} />
                         </div>
                     </>
                 );
@@ -99,11 +99,11 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Frequency</Label>
-                            <Slider value={[effect.frequency]} onValueChange={handleParamChange('frequency')} max={20} min={0.1} step={0.1} />
+                            <Slider value={[effect.frequency ?? 5]} onValueChange={handleParamChange('frequency')} max={20} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Depth</Label>
-                            <Slider value={[effect.depth]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.depth ?? 0.1]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
                         </div>
                     </>
                 );

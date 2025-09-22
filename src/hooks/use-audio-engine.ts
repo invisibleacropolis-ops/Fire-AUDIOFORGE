@@ -81,7 +81,6 @@ function bufferToWave(abuffer: AudioBuffer): Blob {
 
 export function useAudioEngine() {
   const [isReady, setIsReady] = useState(false);
-  const [isStarted, setIsStarted] = useState(false);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -119,14 +118,6 @@ export function useAudioEngine() {
       Tone.Transport.stop();
       Tone.Transport.cancel();
     }
-  }, []);
-
-  const startAudioContext = useCallback(async () => {
-    const context = Tone.getContext();
-    if (context.state !== 'running') {
-        await Tone.start();
-    }
-    setIsStarted(true);
   }, []);
 
   const addTrack = useCallback((): string => {
@@ -200,6 +191,15 @@ export function useAudioEngine() {
       Tone.Transport.start();
       setIsPlaying(true);
     }
+  }, []);
+
+  const stopPlayback = useCallback(() => {
+    Tone.Transport.stop();
+    setIsPlaying(false);
+  }, []);
+
+  const rewind = useCallback(() => {
+    Tone.Transport.position = 0;
   }, []);
 
   const startRecording = useCallback(async () => {
@@ -371,13 +371,12 @@ export function useAudioEngine() {
         track.channel.mute = hasSolo ? !track.isSoloed : track.isMuted;
       }
 
-      // Dispose of old effect nodes before creating new ones
-      track.effects.forEach(e => e.node?.dispose());
-      
       if(track.player && track.channel) {
+        // Dispose old effects before creating new ones
+        track.effects.forEach(e => e.node?.dispose());
         track.player.disconnect();
 
-        // Create new effect nodes based on the updated track.effects array
+        // Create new effect nodes
         const newEffectNodes = track.effects.map((effect, index) => {
           let node: EffectNode | null = null;
           switch (effect.type) {
@@ -426,7 +425,7 @@ export function useAudioEngine() {
                 break;
           }
           if (node) {
-            track.effects[index].node = node; // Update the node reference in the effect object
+            track.effects[index].node = node;
           }
           return node;
         }).filter(node => node !== null) as EffectNode[];
@@ -439,7 +438,6 @@ export function useAudioEngine() {
       }
     });
 
-    // Cleanup function to dispose of effects when component unmounts
     return () => {
         tracks.forEach(track => {
             track.effects.forEach(effect => {
@@ -451,8 +449,6 @@ export function useAudioEngine() {
 
   return {
     isReady,
-    isStarted,
-    startAudioContext,
     tracks,
     isPlaying,
     isRecording,
@@ -460,6 +456,8 @@ export function useAudioEngine() {
     updateTrack,
     importAudio,
     togglePlayback,
+    stopPlayback,
+    rewind,
     startRecording,
     stopRecording,
     exportProject,

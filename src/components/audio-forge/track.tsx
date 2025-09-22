@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Waveform } from './waveform';
-import { Scissors } from 'lucide-react';
+import { Disc3, Mic, Pause, Play, Rewind, Scissors, StopCircle } from 'lucide-react';
 
 interface TrackProps {
   track: TrackType;
@@ -18,9 +19,23 @@ interface TrackProps {
   onSelect: () => void;
   onUpdate: (id: string, updates: Partial<TrackType>) => void;
   onTrim: (id: string, start: number, end: number) => void;
+  onRewind: (id: string) => void;
+  onPlayPause: (id: string) => void;
+  onStop: (id: string) => void;
+  onRecord: (id: string) => void;
 }
 
-export function Track({ track, isSelected, onSelect, onUpdate, onTrim }: TrackProps) {
+export function Track({
+  track,
+  isSelected,
+  onSelect,
+  onUpdate,
+  onTrim,
+  onRewind,
+  onPlayPause,
+  onStop,
+  onRecord,
+}: TrackProps) {
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
 
   const handleVolumeChange = (value: number[]) => {
@@ -61,12 +76,86 @@ export function Track({ track, isSelected, onSelect, onUpdate, onTrim }: TrackPr
     >
       <CardContent className="p-3 flex gap-4 items-start">
         <div className="w-48 flex-shrink-0 space-y-3">
-          <Input 
-            value={track.name} 
+          <Input
+            value={track.name}
             onChange={handleNameChange}
             className="h-8 text-sm font-semibold"
             onClick={(e) => e.stopPropagation()}
           />
+          <div className="flex items-center justify-between gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Rewind track"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRewind(track.id);
+                  }}
+                  disabled={!track.player}
+                >
+                  <Rewind className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Rewind</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="primary"
+                  size="icon"
+                  aria-label={track.isPlaying ? 'Pause track' : 'Play track'}
+                  className="h-9 w-9"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPlayPause(track.id);
+                  }}
+                  disabled={!track.player}
+                >
+                  {track.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{track.isPlaying ? 'Pause' : 'Play'}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Stop track"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStop(track.id);
+                  }}
+                  disabled={!track.player}
+                >
+                  <StopCircle className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Stop</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={track.isRecording ? 'destructive' : 'outline'}
+                  size="icon"
+                  aria-label={track.isRecording ? 'Stop recording track' : 'Record track'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRecord(track.id);
+                  }}
+                >
+                  {track.isRecording ? (
+                    <Disc3 className="h-4 w-4 animate-pulse" />
+                  ) : (
+                    <Mic className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{track.isRecording ? 'Stop Recording' : 'Record'}</TooltipContent>
+            </Tooltip>
+          </div>
           <div className="flex items-center gap-2">
             <Button
               size="sm"

@@ -31,6 +31,8 @@ export type Track = {
   isMuted: boolean;
   isSoloed: boolean;
   duration: number | null;
+  isPlaying: boolean;
+  isRecording: boolean;
 };
 
 function instantiateEffectNode(effect: Effect): EffectNode | null {
@@ -136,6 +138,7 @@ export function useAudioEngine() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingTrackId, setRecordingTrackId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const tracksRef = useRef<Track[]>([]);
@@ -186,6 +189,8 @@ export function useAudioEngine() {
       isMuted: false,
       isSoloed: false,
       duration: null,
+      isPlaying: false,
+      isRecording: false,
     };
     setTracks(prev => [...prev, newTrack]);
     return id;
@@ -219,6 +224,8 @@ export function useAudioEngine() {
         isMuted: false,
         isSoloed: false,
         duration,
+        isPlaying: false,
+        isRecording: false,
       };
 
       setTracks(prev => [...prev, newTrack]);
@@ -255,6 +262,11 @@ export function useAudioEngine() {
   }, []);
 
   const startRecording = useCallback(async () => {
+    if (isRecording && recordingTrackId) {
+      toast({ title: 'Recording in progress', description: 'Stop the current track recording before starting a new one.', variant: 'destructive' });
+      return;
+    }
+
     try {
       if (!userMediaRef.current) {
         userMediaRef.current = new Tone.UserMedia();
@@ -263,22 +275,70 @@ export function useAudioEngine() {
       userMediaRef.current.connect(recorderRef.current!);
       recorderRef.current?.start();
       setIsRecording(true);
+      setRecordingTrackId(null);
       toast({ title: 'Recording started' });
     } catch (error) {
       toast({ title: 'Recording failed', description: 'Please ensure microphone permissions are granted.', variant: 'destructive' });
     }
-  }, [toast]);
+  }, [isRecording, recordingTrackId, toast]);
 
-  const stopRecording = useCallback(async () => {
-    if (!recorderRef.current || !isRecording) return;
+  const stopTrackRecording = useCallback(async (trackId: string) => {
+    if (!recorderRef.current || !isRecording || recordingTrackId !== trackId) return;
     const recording = await recorderRef.current.stop();
     setIsRecording(false);
-    
+    setRecordingTrackId(null);
+
+    const track = tracksRef.current.find(t => t.id === trackId);
+    if (!track) {
+      toast({ title: 'Recording failed', description: 'Track no longer exists.', variant: 'destructive' });
+      return;
+    }
+
     const url = URL.createObjectURL(recording);
     const player = new Tone.Player();
     await player.load(url);
     const duration = player.buffer.duration;
-    
+
+    const channel = track.channel ?? new Tone.Channel(0, 0).toDestination();
+    player.connect(channel);
+    player.sync().start(0);
+
+    track.player?.dispose();
+    if (track.url) {
+      URL.revokeObjectURL(track.url);
+    }
+
+    setTracks(prev => prev.map(t => (
+      t.id === trackId
+        ? {
+            ...t,
+            url,
+            player,
+            channel,
+            duration,
+            isRecording: false,
+            isPlaying: false,
+          }
+        : t
+    )));
+    toast({ title: 'Recording finished', description: `${track.name} updated.` });
+  }, [isRecording, recordingTrackId, toast]);
+
+  const stopRecording = useCallback(async () => {
+    if (recordingTrackId) {
+      await stopTrackRecording(recordingTrackId);
+      return;
+    }
+
+    if (!recorderRef.current || !isRecording) return;
+    const recording = await recorderRef.current.stop();
+    setIsRecording(false);
+
+    const url = URL.createObjectURL(recording);
+    const player = new Tone.Player();
+    await player.load(url);
+    const duration = player.buffer.duration;
+
     const id = `track-${Date.now()}`;
     const channel = new Tone.Channel(0, 0).toDestination();
     player.connect(channel);
@@ -296,10 +356,90 @@ export function useAudioEngine() {
       isMuted: false,
       isSoloed: false,
       duration,
+      isPlaying: false,
+      isRecording: false,
     };
     setTracks(prev => [...prev, newTrack]);
     toast({ title: 'Recording finished', description: 'New track added.' });
-  }, [isRecording, toast]);
+  }, [isRecording, recordingTrackId, stopTrackRecording, toast]);
+
+  const startTrackRecording = useCallback(async (trackId: string) => {
+    if (isRecording && recordingTrackId && recordingTrackId !== trackId) {
+      toast({ title: 'Recording in progress', description: 'Stop the current track recording before starting a new one.', variant: 'destructive' });
+      return;
+    }
+
+    if (isRecording && recordingTrackId === trackId) {
+      return;
+    }
+
+    try {
+      if (!userMediaRef.current) {
+        userMediaRef.current = new Tone.UserMedia();
+        await userMediaRef.current.open();
+      }
+      userMediaRef.current.connect(recorderRef.current!);
+      recorderRef.current?.start();
+      setIsRecording(true);
+      setRecordingTrackId(trackId);
+      setTracks(prev => prev.map(t => ({ ...t, isRecording: t.id === trackId })));
+      const trackName = tracksRef.current.find(t => t.id === trackId)?.name ?? 'track';
+      toast({ title: 'Track recording started', description: `Recording ${trackName}.` });
+    } catch (error) {
+      toast({ title: 'Recording failed', description: 'Please ensure microphone permissions are granted.', variant: 'destructive' });
+    }
+  }, [isRecording, recordingTrackId, toast]);
+
+  const toggleTrackRecording = useCallback(async (trackId: string) => {
+    if (isRecording && recordingTrackId === trackId) {
+      await stopTrackRecording(trackId);
+    } else {
+      await startTrackRecording(trackId);
+    }
+  }, [isRecording, recordingTrackId, startTrackRecording, stopTrackRecording]);
+
+  const toggleTrackPlayback = useCallback(async (trackId: string) => {
+    const track = tracksRef.current.find(t => t.id === trackId);
+    if (!track || !track.player) {
+      return;
+    }
+
+    const context = Tone.getContext();
+    if (context.state !== 'running') {
+      await Tone.start();
+    }
+
+    if (track.player.state === 'started') {
+      track.player.stop();
+      track.player.seek(0);
+      setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+    } else {
+      track.player.start();
+      setTracks(prev => prev.map(t => ({ ...t, isPlaying: t.id === trackId })));
+    }
+  }, []);
+
+  const stopTrackPlayback = useCallback((trackId: string) => {
+    const track = tracksRef.current.find(t => t.id === trackId);
+    if (!track?.player) {
+      return;
+    }
+
+    track.player.stop();
+    track.player.seek(0);
+    setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+  }, []);
+
+  const rewindTrack = useCallback((trackId: string) => {
+    const track = tracksRef.current.find(t => t.id === trackId);
+    if (!track?.player) {
+      return;
+    }
+
+    track.player.stop();
+    track.player.seek(0);
+    setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+  }, []);
 
   const trimTrack = useCallback(async (trackId: string, startTime: number, endTime: number) => {
     const track = tracksRef.current.find(t => t.id === trackId);
@@ -487,6 +627,10 @@ export function useAudioEngine() {
     rewind,
     startRecording,
     stopRecording,
+    toggleTrackPlayback,
+    stopTrackPlayback,
+    rewindTrack,
+    toggleTrackRecording,
     exportProject,
     trimTrack,
   };

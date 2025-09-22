@@ -2,24 +2,24 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  Player,
-  Channel,
-  Recorder,
-  UserMedia,
-  start,
-  Transport,
-  Offline,
-  context as ToneContext,
-  loaded
-} from 'tone';
-import Reverb from 'tone/esm/effect/Reverb';
-import FeedbackDelay from 'tone/esm/effect/FeedbackDelay';
-import Distortion from 'tone/esm/effect/Distortion';
-import Chorus from 'tone/esm/effect/Chorus';
-import Flanger from 'tone/esm/effect/Flanger';
-import Phaser from 'tone/esm/effect/Phaser';
 import { useToast } from './use-toast';
+
+// Manually vendored Tone.js components
+import { Reverb } from '../lib/tone/Reverb';
+import { FeedbackDelay } from '../lib/tone/FeedbackDelay';
+import { Distortion } from '../lib/tone/Distortion';
+import { Chorus } from '../lib/tone/Chorus';
+import { Flanger } from '../lib/tone/Flanger';
+import { Phaser } from '../lib/tone/Phaser';
+import { Player } from '../lib/tone/Player';
+import { Channel } from '../lib/tone/component/channel/Channel';
+import { Recorder } from '../lib/tone/component/analysis/Recorder';
+import { UserMedia } from '../lib/tone/source/UserMedia';
+import { getContext, start } from '../lib/tone/core/Global';
+import { Transport } from '../lib/tone/core/clock/Transport';
+import { Offline } from '../lib/tone/core/context/Offline';
+import { loaded } from '../lib/tone/core/context/Tone';
+
 
 // Type definitions
 export type EffectType = 'reverb' | 'delay' | 'distortion' | 'chorus' | 'flanger' | 'phaser';
@@ -138,7 +138,8 @@ export function useAudioEngine() {
   }, []);
 
   const startAudioContext = useCallback(async () => {
-    if (ToneContext.state !== 'running') {
+    const context = getContext();
+    if (context.state !== 'running') {
         await start();
     }
     setIsStarted(true);
@@ -203,7 +204,8 @@ export function useAudioEngine() {
   }, [toast]);
   
   const togglePlayback = useCallback(async () => {
-    if (ToneContext.state !== 'running') {
+    const context = getContext();
+    if (context.state !== 'running') {
       await start();
     }
     if (Transport.state === 'started') {
@@ -281,7 +283,7 @@ export function useAudioEngine() {
         const endSample = Math.floor(endTime * audioBuffer.sampleRate);
         const newLength = endSample - startSample;
         
-        const newAudioBuffer = ToneContext.rawContext.createBuffer(
+        const newAudioBuffer = getContext().rawContext.createBuffer(
             audioBuffer.numberOfChannels,
             newLength,
             audioBuffer.sampleRate
@@ -363,10 +365,10 @@ export function useAudioEngine() {
       anchor.href = downloadUrl;
       anchor.click();
       URL.revokeObjectURL(downloadUrl);
-      toast({ title: 'Export successful!', variant: 'default' });
+      toast({ title: 'Export successful!', variant = 'default' });
     } catch(e) {
       console.error(e);
-      toast({ title: 'Export failed', description: 'An unexpected error occurred.', variant: 'destructive' });
+      toast({ title: 'Export failed', description = 'An unexpected error occurred.', variant = 'destructive' });
     }
   }, [toast, tracks]);
 
@@ -392,12 +394,12 @@ export function useAudioEngine() {
         const newEffectNodes = track.effects.map((effect, index) => {
           let node: EffectNode | null = null;
           switch (effect.type) {
-            case 'reverb': node = new Reverb({ wet: effect.wet, context: ToneContext }); break;
-            case 'delay': node = new FeedbackDelay({ wet: effect.wet, context: ToneContext }); break;
-            case 'distortion': node = new Distortion({ wet: effect.wet, context: ToneContext }); break;
-            case 'chorus': node = new Chorus({ wet: effect.wet, context: ToneContext }); break;
-            case 'flanger': node = new Flanger({ wet: effect.wet, context: ToneContext }); break;
-            case 'phaser': node = new Phaser({ wet: effect.wet, context: ToneContext }); break;
+            case 'reverb': node = new Reverb({ wet: effect.wet }); break;
+            case 'delay': node = new FeedbackDelay({ wet: effect.wet }); break;
+            case 'distortion': node = new Distortion({ wet: effect.wet }); break;
+            case 'chorus': node = new Chorus({ wet: effect.wet }); break;
+            case 'flanger': node = new Flanger({ wet: effect.wet }); break;
+            case 'phaser': node = new Phaser({ wet: effect.wet }); break;
           }
           if (node) {
             track.effects[index].node = node; // Update the node reference in the effect object

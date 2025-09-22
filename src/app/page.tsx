@@ -25,6 +25,10 @@ export default function AudioForge() {
     exportProject,
     importAudio,
     trimTrack,
+    toggleTrackPlayback,
+    stopTrackPlayback,
+    rewindTrack,
+    toggleTrackRecording,
   } = useAudioEngine();
 
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -76,6 +80,10 @@ export default function AudioForge() {
             selectedTrackId={selectedTrackId}
             onTrackUpdate={updateTrack}
             onTrim={trimTrack}
+            onTrackRewind={rewindTrack}
+            onTrackPlayPause={toggleTrackPlayback}
+            onTrackStop={stopTrackPlayback}
+            onTrackRecord={toggleTrackRecording}
           />
         </div>
         <EffectsPanel track={selectedTrack} onTrackUpdate={updateTrack} />

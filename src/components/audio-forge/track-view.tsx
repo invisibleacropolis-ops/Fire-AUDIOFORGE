@@ -14,6 +14,10 @@ interface TrackViewProps {
   selectedTrackId: string | null;
   onTrackUpdate: (id: string, updates: Partial<Track>) => void;
   onTrim: (id: string, start: number, end: number) => void;
+  onTrackRewind: (id: string) => void;
+  onTrackPlayPause: (id: string) => void;
+  onTrackStop: (id: string) => void;
+  onTrackRecord: (id: string) => void;
 }
 
 export function TrackView({
@@ -23,6 +27,10 @@ export function TrackView({
   selectedTrackId,
   onTrackUpdate,
   onTrim,
+  onTrackRewind,
+  onTrackPlayPause,
+  onTrackStop,
+  onTrackRecord,
 }: TrackViewProps) {
   return (
     <div className="flex-1 flex flex-col bg-background p-4 gap-4 overflow-hidden">
@@ -43,6 +51,10 @@ export function TrackView({
                 onSelect={() => onTrackSelect(track.id)}
                 onUpdate={onTrackUpdate}
                 onTrim={onTrim}
+                onRewind={onTrackRewind}
+                onPlayPause={onTrackPlayPause}
+                onStop={onTrackStop}
+                onRecord={onTrackRecord}
               />
             ))
           ) : (

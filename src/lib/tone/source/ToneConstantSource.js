@@ -18,6 +18,8 @@ export class ToneConstantSource extends Source {
         const options = optionsFromArguments(ToneConstantSource.getDefaults(), arguments, ["offset"]);
         super(options);
         this.name = "ToneConstantSource";
+        this._source = this.context.createConstantSource();
+        this._source.start(0);
         this.offset = new Param({
             context: this.context,
             param: this._source.offset,
@@ -37,26 +39,24 @@ export class ToneConstantSource extends Source {
      * @param time
      */
     _start(time) {
-        const computedTime = this.toSeconds(time);
-        this._source = this.context.createConstantSource();
         this._source.connect(this.output);
-        this._source.start(computedTime);
     }
     /**
      * Stop the source at the given time.
      * @param time
      */
     _stop(time) {
-        const computedTime = this.toSeconds(time);
-        this._source.stop(computedTime);
+        this._source.disconnect(this.output);
     }
     dispose() {
-        super.dispose();
         if (this.state === "started") {
             this.stop(this.now());
         }
+        super.dispose();
         this._source.disconnect();
         this.offset.dispose();
         return this;
     }
 }
+
+    

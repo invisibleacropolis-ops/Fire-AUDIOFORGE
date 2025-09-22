@@ -3,11 +3,11 @@ import { Ticks } from "../type/Ticks.js";
 import { TransportTime } from "../type/TransportTime.js";
 import { Time } from "../type/Time.js";
 import { Frequency } from "../type/Frequency.js";
-import { ToneConstantSource } from "../../source/ToneConstantSource.js";
 import { optionsFromArguments } from "../util/Defaults.js";
 import { Timeline } from "../util/Timeline.js";
 import { isAudioParam } from "../util/Type.js";
 import { ToneWithContext } from "../ToneWithContext.js";
+
 /**
  * the possible automation types
  */
@@ -19,6 +19,7 @@ export var AutomationType;
     AutomationType["SetValue"] = "setValueAtTime";
     AutomationType["Cancel"] = "cancelScheduledValues";
 })(AutomationType || (AutomationType = {}));
+
 /**
  * Param is a wrapper around {@link AudioParam} which allows for easy
  * scheduling of automation. It also simplifies the getters and setters
@@ -41,16 +42,15 @@ export class Param extends ToneWithContext {
         this.name = "Param";
         this._events = new Timeline();
         this._initialValue = 0;
-        this.input = this._source = new ToneConstantSource(Object.assign(options, {
-            offset: options.value
-        }));
+        this.input = this._source = this.context.createConstantSource();
+        this._source.start(0);
         this._param = options.param;
         this._initialValue = this._param.defaultValue;
         this.units = options.units;
         this.convert = options.convert;
         // if the value is defined, set it immediately
         if (this.value !== this._param.value) {
-            this.value = this.value;
+            this.value = options.value;
         }
     }
     static getDefaults() {
@@ -386,7 +386,7 @@ export class Param extends ToneWithContext {
      */
     dispose() {
         super.dispose();
-        this._source.dispose();
+        this._source.disconnect();
         this._events.dispose();
         return this;
     }
@@ -437,3 +437,5 @@ export class Param extends ToneWithContext {
         return v1 + (v0 - v1) * Math.exp(-(t - t0) / timeConstant);
     }
 }
+
+    

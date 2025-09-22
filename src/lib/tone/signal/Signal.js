@@ -29,10 +29,10 @@ import { readOnly } from "../core/util/Interface.js";
 export class Signal extends WaveShaper {
     constructor() {
         const options = optionsFromArguments(Signal.getDefaults(), arguments, ["value", "units"]);
-        super({
-            context: options.context,
+        super(Object.assign(options, {
             length: 1,
-        });
+            mapping: () => 1,
+        }));
         this.name = "Signal";
         /**
          * When true, the signal value will be converted to the units when being set and gotten.
@@ -50,6 +50,7 @@ export class Signal extends WaveShaper {
             value: options.value,
         });
         this.param = this._constantSource;
+        this.setMap(() => 1);
         readOnly(this, ["param", "value"]);
     }
     static getDefaults() {
@@ -152,3 +153,5 @@ export class Signal extends WaveShaper {
         return this;
     }
 }
+
+    

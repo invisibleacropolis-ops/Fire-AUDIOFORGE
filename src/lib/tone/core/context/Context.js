@@ -354,7 +354,7 @@ export class Context extends BaseAudioContext {
     constructor(options) {
         super();
         this.name = "Context";
-        this._ticker = new Ticker(() => this.emit("tick"));
+        this._ticker = new Ticker(() => this.emit("tick"), this);
         this.rawContext = createAudioContext(options);
         this.on("tick", this._ticker.update.bind(this._ticker));
     }

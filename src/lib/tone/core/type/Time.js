@@ -1,9 +1,8 @@
 
 import { getContext } from "../Global.js";
-import { isNumber, isString } from "../util/Type.js";
-import { TransportTime } from "./TransportTime.js";
-import { Ticks } from "./Ticks.js";
 import { TimeBase } from "./TimeBase.js";
+import { Ticks } from "./Ticks.js";
+import { TransportTime } from "./TransportTime.js";
 
 /**
  * Time is a primitive type for encoding and manipulating time quantities.

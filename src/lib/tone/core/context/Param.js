@@ -52,6 +52,7 @@ export class Param extends ToneWithContext {
         if (this.value !== this._param.value) {
             this.value = options.value;
         }
+        this._source.connect(this._param);
     }
     static getDefaults() {
         return Object.assign(ToneWithContext.getDefaults(), {
@@ -65,7 +66,8 @@ export class Param extends ToneWithContext {
      * The current value of the parameter.
      */
     get value() {
-        return this.getValueAtTime(this.now());
+        const now = this.now();
+        return this.getValueAtTime(now);
     }
     set value(value) {
         this.cancelScheduledValues(this.now());
@@ -93,32 +95,7 @@ export class Param extends ToneWithContext {
      * The value of the parameter as a signal.
      */
     get signal() {
-        return this._source;
-    }
-    /**
-     * Connect the Param to a native AudioParam or another Tone.Param
-     */
-    connect(destination, outputNumber, inputNumber) {
-        if (isAudioParam(destination)) {
-            // if it's an audio param, connect the constant source to it
-            this._source.connect(destination, outputNumber, inputNumber);
-        }
-        else {
-            super.connect(destination, outputNumber, inputNumber);
-        }
-        return this;
-    }
-    /**
-     * Disconnect the signal from the audio param.
-     */
-    disconnect(destination, outputNumber, inputNumber) {
-        if (isAudioParam(destination)) {
-            this._source.disconnect(destination, outputNumber, inputNumber);
-        }
-        else {
-            super.disconnect(destination, outputNumber, inputNumber);
-        }
-        return this;
+        return this._source.offset;
     }
     /**
      * Apply the given units to the value
@@ -175,7 +152,7 @@ export class Param extends ToneWithContext {
             type: AutomationType.SetValue,
             value: numericValue,
         });
-        this._source.offset.setValueAtTime(numericValue, computedTime);
+        this.signal.setValueAtTime(numericValue, computedTime);
         return this;
     }
     /**
@@ -247,7 +224,7 @@ export class Param extends ToneWithContext {
             type: AutomationType.Linear,
             value: numericValue,
         });
-        this._source.offset.linearRampToValueAtTime(numericValue, computedTime);
+        this.signal.linearRampToValueAtTime(numericValue, computedTime);
         return this;
     }
     /**
@@ -272,7 +249,7 @@ export class Param extends ToneWithContext {
                 type: AutomationType.Exponential,
                 value: numericValue,
             });
-            this._source.offset.exponentialRampToValueAtTime(numericValue, computedTime);
+            this.signal.exponentialRampToValueAtTime(numericValue, computedTime);
         }
         return this;
     }
@@ -328,7 +305,7 @@ export class Param extends ToneWithContext {
             value: numericValue,
             timeConstant: timeConstant
         });
-        this._source.offset.setTargetAtTime(numericValue, computedTime, timeConstant);
+        this.signal.setTargetAtTime(numericValue, computedTime, timeConstant);
         return this;
     }
     /**
@@ -339,7 +316,7 @@ export class Param extends ToneWithContext {
     cancelScheduledValues(time) {
         const computedTime = this.toSeconds(time);
         this._events.cancel(computedTime);
-        this._source.offset.cancelScheduledValues(computedTime);
+        this.signal.cancelScheduledValues(computedTime);
         return this;
     }
     /**
@@ -350,9 +327,9 @@ export class Param extends ToneWithContext {
         const computedTime = this.toSeconds(time);
         const valueAtTime = this.getValueAtTime(computedTime);
         // remove the schedule
-        this._source.offset.cancelScheduledValues(computedTime);
+        this.signal.cancelScheduledValues(computedTime);
         // set the value
-        this._source.offset.setValueAtTime(valueAtTime, computedTime);
+        this.signal.setValueAtTime(valueAtTime, computedTime);
         // remove all the events after this time
         this._events.cancel(computedTime);
         // add a new event
@@ -437,5 +414,3 @@ export class Param extends ToneWithContext {
         return v1 + (v0 - v1) * Math.exp(-(t - t0) / timeConstant);
     }
 }
-
-    

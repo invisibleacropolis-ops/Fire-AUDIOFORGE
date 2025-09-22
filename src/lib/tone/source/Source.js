@@ -22,19 +22,13 @@ export class Source extends ToneAudioNode {
             context: this.context,
             gain: 1,
         });
-        /**
-         * The volume of the output in decibels.
-         * @example
-         * const source = new Source();
-         * source.volume.value = -6;
-         */
-        this.volume = this._volume.gain;
         this._state = new StateTimeline("stopped");
         this._synced = false;
         this._scheduled = [];
         // set the initial state
         this._state.setStateAtTime("stopped", 0);
         this.mute = options.mute;
+        this.volume = options.volume;
         readOnly(this, "volume");
     }
     static getDefaults() {
@@ -202,7 +196,6 @@ export class Source extends ToneAudioNode {
         this.onended = () => { };
         this.unsync();
         this._volume.dispose();
-        this.volume.dispose();
         this._state.dispose();
         return this;
     }

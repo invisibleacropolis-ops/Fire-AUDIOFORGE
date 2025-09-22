@@ -177,5 +177,3 @@ export class ToneWithContext extends Tone {
         return this.context.intervalToFrequencyRatio(interval);
     }
 }
-
-    

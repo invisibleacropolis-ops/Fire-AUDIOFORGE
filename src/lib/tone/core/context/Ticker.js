@@ -5,8 +5,9 @@
  * @private
  */
 export class Ticker {
-    constructor(callback) {
+    constructor(callback, context) {
         this._callback = callback;
+        this._context = context;
         this._type = Ticker.Type.Worker;
         /**
          * The update interval of the ticker
@@ -22,7 +23,7 @@ export class Ticker {
         if (Ticker.hasWorker) {
             try {
                 this._worker = new Worker(Ticker._workerPath);
-                this._worker.onmessage = this.update.bind(this);
+                this._worker.onmessage = this._onmessage.bind(this);
                 this._type = Ticker.Type.Worker;
             }
             catch (e) {
@@ -35,21 +36,26 @@ export class Ticker {
         }
         // create the timeout loop
         if (this._type === Ticker.Type.Timeout) {
-            this._timeout = setTimeout(this.update.bind(this), this.updateInterval * 1000);
+            this._timeout = setTimeout(() => this._onmessage({data: 'tick'}), this.updateInterval * 1000);
         }
         // start the ticker
         return this;
+    }
+    _onmessage(e) {
+        if (e.data === 'tick') {
+            this.update();
+        }
     }
     /**
      * call the callback
      */
     update() {
         if (this._type === Ticker.Type.Worker) {
-            this._worker.postMessage(this.lookAhead);
+            this._worker.postMessage(this._context.currentTime + this.lookAhead);
         }
         else {
             this._callback();
-            this._timeout = setTimeout(this.update.bind(this), this.updateInterval * 1000);
+            this._timeout = setTimeout(() => this._onmessage({data: 'tick'}), this.updateInterval * 1000);
         }
     }
     /**

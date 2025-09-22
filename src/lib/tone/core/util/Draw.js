@@ -47,6 +47,7 @@ export class Draw extends Emitter {
     static getDefaults() {
         return {
             callback: () => { },
+            context: getContext(),
         };
     }
     /**
@@ -102,5 +103,3 @@ export class Draw extends Emitter {
         return this;
     }
 }
-
-    

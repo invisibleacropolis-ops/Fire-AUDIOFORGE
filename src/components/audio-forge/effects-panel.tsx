@@ -32,11 +32,11 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Decay</Label>
-                            <Slider defaultValue={[1.5]} onValueChange={handleParamChange('decay')} max={10} min={0.1} step={0.1} />
+                            <Slider value={[effect.decay]} onValueChange={handleParamChange('decay')} max={10} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Pre-delay</Label>
-                            <Slider defaultValue={[0.01]} onValueChange={handleParamChange('preDelay')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.preDelay]} onValueChange={handleParamChange('preDelay')} max={1} min={0} step={0.01} />
                         </div>
                     </>
                 );
@@ -45,11 +45,11 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Delay Time</Label>
-                            <Slider defaultValue={[0.25]} onValueChange={handleParamChange('delayTime')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.delayTime]} onValueChange={handleParamChange('delayTime')} max={1} min={0} step={0.01} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Feedback</Label>
-                            <Slider defaultValue={[0.5]} onValueChange={handleParamChange('feedback')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.feedback]} onValueChange={handleParamChange('feedback')} max={1} min={0} step={0.01} />
                         </div>
                     </>
                 );
@@ -57,7 +57,7 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                 return (
                     <div className="space-y-2">
                         <Label className="text-xs">Amount</Label>
-                        <Slider defaultValue={[0.4]} onValueChange={handleParamChange('distortion')} max={1} min={0} step={0.01} />
+                        <Slider value={[effect.distortion]} onValueChange={handleParamChange('distortion')} max={1} min={0} step={0.01} />
                     </div>
                 );
             case 'chorus':
@@ -65,15 +65,15 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Frequency</Label>
-                            <Slider defaultValue={[1.5]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
+                            <Slider value={[effect.frequency]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Delay Time</Label>
-                            <Slider defaultValue={[3.5]} onValueChange={handleParamChange('delayTime')} max={10} min={1} step={0.1} />
+                            <Slider value={[effect.delayTime]} onValueChange={handleParamChange('delayTime')} max={10} min={1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Depth</Label>
-                            <Slider defaultValue={[0.7]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.depth]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
                         </div>
                     </>
                 );
@@ -82,15 +82,15 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Frequency</Label>
-                            <Slider defaultValue={[0.5]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
+                            <Slider value={[effect.frequency]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Octaves</Label>
-                            <Slider defaultValue={[3]} onValueChange={handleParamChange('octaves')} max={8} min={1} step={1} />
+                            <Slider value={[effect.octaves]} onValueChange={handleParamChange('octaves')} max={8} min={1} step={1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Base Frequency</Label>
-                            <Slider defaultValue={[350]} onValueChange={handleParamChange('baseFrequency')} max={1000} min={100} step={10} />
+                            <Slider value={[effect.baseFrequency]} onValueChange={handleParamChange('baseFrequency')} max={1000} min={100} step={10} />
                         </div>
                     </>
                 );
@@ -99,11 +99,11 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                     <>
                         <div className="space-y-2">
                             <Label className="text-xs">Frequency</Label>
-                            <Slider defaultValue={[5]} onValueChange={handleParamChange('frequency')} max={20} min={0.1} step={0.1} />
+                            <Slider value={[effect.frequency]} onValueChange={handleParamChange('frequency')} max={20} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs">Depth</Label>
-                            <Slider defaultValue={[0.1]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
+                            <Slider value={[effect.depth]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
                         </div>
                     </>
                 );
@@ -141,12 +141,72 @@ export function EffectsPanel({ track, onTrackUpdate }: EffectsPanelProps) {
     }
     
     const handleAddEffect = (effectType: EffectType) => {
-        const newEffect: Effect = {
-            id: `${effectType}-${Date.now()}`,
-            type: effectType,
-            wet: 0.5,
-            node: null
-        };
+        let newEffect: Effect;
+        switch (effectType) {
+            case 'reverb':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    decay: 1.5,
+                    preDelay: 0.01,
+                    node: null
+                };
+                break;
+            case 'delay':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    delayTime: 0.25,
+                    feedback: 0.5,
+                    node: null
+                };
+                break;
+            case 'distortion':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    distortion: 0.4,
+                    node: null
+                };
+                break;
+            case 'chorus':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    frequency: 1.5,
+                    delayTime: 3.5,
+                    depth: 0.7,
+                    node: null
+                };
+                break;
+            case 'phaser':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    frequency: 0.5,
+                    octaves: 3,
+                    baseFrequency: 350,
+                    node: null
+                };
+                break;
+            case 'vibrato':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    frequency: 5,
+                    depth: 0.1,
+                    node: null
+                };
+                break;
+            default:
+                return;
+        }
         onTrackUpdate(track.id, { effects: [...track.effects, newEffect] });
     };
 

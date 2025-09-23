@@ -381,10 +381,18 @@ export function useAudioEngine() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTrackId, setRecordingTrackId] = useState<string | null>(null);
+  const [isMasterRecording, setIsMasterRecording] = useState(false);
+  const [isMasterPlayingBack, setIsMasterPlayingBack] = useState(false);
+  const [masterRecordingUrl, setMasterRecordingUrl] = useState<string | null>(null);
   const { toast } = useToast();
 
   const tracksRef = useRef<Track[]>([]);
   const recorderRef = useRef<Tone.Recorder | null>(null);
+  const masterRecorderRef = useRef<Tone.Recorder | null>(null);
+  const masterRecordingPlayerRef = useRef<Tone.Player | null>(null);
+  const masterRecordingBlobRef = useRef<Blob | null>(null);
+  const masterRecordingBufferRef = useRef<AudioBuffer | null>(null);
+  const masterRecordingUrlRef = useRef<string | null>(null);
   const userMediaRef = useRef<Tone.UserMedia | null>(null);
   const bufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
   // playbackStateRef keeps a lightweight clock for every playing track so we
@@ -407,6 +415,12 @@ export function useAudioEngine() {
       // transport actions actually fire.
       setIsReady(true);
       recorderRef.current = new Tone.Recorder();
+      masterRecorderRef.current = new Tone.Recorder();
+      try {
+        Tone.Destination.connect(masterRecorderRef.current);
+      } catch (error) {
+        console.warn('Failed to connect master recorder', error);
+      }
     };
     void init();
 
@@ -426,6 +440,18 @@ export function useAudioEngine() {
       registry.forEach(node => node.dispose());
       registry.clear();
       recorderRef.current?.dispose();
+      if (masterRecorderRef.current) {
+        try {
+          Tone.Destination.disconnect(masterRecorderRef.current);
+        } catch (error) {
+          console.warn('Failed to disconnect master recorder', error);
+        }
+      }
+      masterRecorderRef.current?.dispose();
+      masterRecordingPlayerRef.current?.dispose();
+      if (masterRecordingUrlRef.current) {
+        URL.revokeObjectURL(masterRecordingUrlRef.current);
+      }
       userMediaRef.current?.dispose();
       Tone.Transport.stop();
       Tone.Transport.cancel();
@@ -1049,6 +1075,179 @@ export function useAudioEngine() {
       Tone.Transport.off('stop', handleTransportStop);
     };
   }, [resetPlayersToStart]);
+
+  const startMasterRecording = useCallback(async () => {
+    if (isMasterRecording) {
+      toast({
+        title: 'Recording in progress',
+        description: 'Stop the current master recording before starting a new one.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!masterRecorderRef.current) {
+      masterRecorderRef.current = new Tone.Recorder();
+      try {
+        Tone.Destination.connect(masterRecorderRef.current);
+      } catch (error) {
+        console.warn('Failed to connect master recorder', error);
+      }
+    }
+
+    if (masterRecordingPlayerRef.current) {
+      masterRecordingPlayerRef.current.stop();
+      setIsMasterPlayingBack(false);
+    }
+    masterRecordingBlobRef.current = null;
+    masterRecordingBufferRef.current = null;
+    if (masterRecordingUrlRef.current) {
+      URL.revokeObjectURL(masterRecordingUrlRef.current);
+      masterRecordingUrlRef.current = null;
+    }
+    setMasterRecordingUrl(null);
+
+    try {
+      await ensureContextRunning();
+      masterRecorderRef.current?.start();
+      setIsMasterRecording(true);
+      toast({ title: 'Master recording started', description: 'Capturing master output.' });
+    } catch (error) {
+      console.error(error);
+      setIsMasterRecording(false);
+      toast({
+        title: 'Recording failed',
+        description: 'Unable to start the master recorder.',
+        variant: 'destructive',
+      });
+    }
+  }, [ensureContextRunning, isMasterRecording, toast]);
+
+  const stopMasterRecording = useCallback(async () => {
+    if (!masterRecorderRef.current || !isMasterRecording) {
+      return;
+    }
+
+    try {
+      const recording = await masterRecorderRef.current.stop();
+      setIsMasterRecording(false);
+      masterRecordingBlobRef.current = recording;
+
+      const previousUrl = masterRecordingUrlRef.current;
+      if (previousUrl) {
+        URL.revokeObjectURL(previousUrl);
+      }
+
+      const url = URL.createObjectURL(recording);
+      masterRecordingUrlRef.current = url;
+      setMasterRecordingUrl(url);
+
+      try {
+        const buffer = await decodeBlobToAudioBuffer(recording);
+        masterRecordingBufferRef.current = buffer;
+        toast({
+          title: 'Master recording captured',
+          description: 'Ready for playback and export.',
+        });
+      } catch (error) {
+        console.error(error);
+        masterRecordingBufferRef.current = null;
+        toast({
+          title: 'Master recording captured',
+          description: 'Export is available, but playback could not be prepared.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      setIsMasterRecording(false);
+      toast({
+        title: 'Recording failed',
+        description: 'Unable to capture the master output.',
+        variant: 'destructive',
+      });
+    }
+  }, [decodeBlobToAudioBuffer, isMasterRecording, toast]);
+
+  const toggleMasterRecording = useCallback(async () => {
+    if (isMasterRecording) {
+      await stopMasterRecording();
+    } else {
+      await startMasterRecording();
+    }
+  }, [isMasterRecording, startMasterRecording, stopMasterRecording]);
+
+  const toggleMasterPlayback = useCallback(async () => {
+    if (isMasterPlayingBack) {
+      masterRecordingPlayerRef.current?.stop();
+      return;
+    }
+
+    const buffer = masterRecordingBufferRef.current;
+    if (!buffer) {
+      toast({
+        title: 'No master recording',
+        description: 'Record the master output before playing back.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await ensureContextRunning();
+      const player = createPlayerFromAudioBuffer(buffer);
+      masterRecordingPlayerRef.current?.dispose();
+      masterRecordingPlayerRef.current = player;
+      player.connect(Tone.Destination);
+      player.onstop = () => {
+        setIsMasterPlayingBack(false);
+        if (masterRecordingPlayerRef.current === player) {
+          masterRecordingPlayerRef.current = null;
+        }
+        player.dispose();
+      };
+      player.start();
+      setIsMasterPlayingBack(true);
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: 'Playback failed',
+        description: 'Unable to play the master recording.',
+        variant: 'destructive',
+      });
+      masterRecordingPlayerRef.current?.dispose();
+      masterRecordingPlayerRef.current = null;
+      setIsMasterPlayingBack(false);
+    }
+  }, [ensureContextRunning, isMasterPlayingBack, toast]);
+
+  const exportMasterRecording = useCallback(() => {
+    const recording = masterRecordingBlobRef.current;
+    if (!recording) {
+      toast({
+        title: 'No master recording',
+        description: 'Capture the master output before exporting.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    let url = masterRecordingUrlRef.current;
+    if (!url) {
+      url = URL.createObjectURL(recording);
+      masterRecordingUrlRef.current = url;
+      setMasterRecordingUrl(url);
+    }
+
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    anchor.download = `master-recording-${timestamp}.wav`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    toast({ title: 'Master recording exported', description: 'Download started.' });
+  }, [toast]);
 
   const startRecording = useCallback(async () => {
     if (isRecording && recordingTrackId) {
@@ -1804,11 +2003,16 @@ export function useAudioEngine() {
     });
   }, [tracks]);
 
+  const hasMasterRecording = masterRecordingUrl !== null;
+
   return {
     isReady,
     tracks,
     isPlaying,
     isRecording,
+    isMasterRecording,
+    isMasterPlayingBack,
+    hasMasterRecording,
     addTrack,
     updateTrack,
     setTrackSelection,
@@ -1817,6 +2021,9 @@ export function useAudioEngine() {
     pausePlayback,
     stopPlayback,
     rewind,
+    toggleMasterRecording,
+    toggleMasterPlayback,
+    exportMasterRecording,
     startRecording,
     stopRecording,
     toggleTrackPlayback,

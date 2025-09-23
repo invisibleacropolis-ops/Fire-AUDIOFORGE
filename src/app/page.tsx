@@ -5,7 +5,10 @@ import { useState } from 'react';
 import type { Track } from '@/hooks/use-audio-engine';
 import { useAudioEngine } from '@/hooks/use-audio-engine';
 import { AppHeader } from '@/components/audio-forge/header';
-import { MasterTransportControls } from '@/components/audio-forge/transport-controls';
+import {
+  MasterRecordControls,
+  MasterTransportControls,
+} from '@/components/audio-forge/transport-controls';
 import { TrackView } from '@/components/audio-forge/track-view';
 import { EffectsPanel } from '@/components/audio-forge/effects-panel';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -30,6 +33,12 @@ export default function AudioForge() {
     rewind,
     isPlaying,
     exportProject,
+    isMasterRecording,
+    isMasterPlayingBack,
+    hasMasterRecording,
+    toggleMasterRecording,
+    toggleMasterPlayback,
+    exportMasterRecording,
   } = useAudioEngine();
 
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -72,6 +81,14 @@ export default function AudioForge() {
               onStop={stopPlayback}
               onRewind={rewind}
               onExport={exportProject}
+            />
+            <MasterRecordControls
+              isRecording={isMasterRecording}
+              isPlayingBack={isMasterPlayingBack}
+              hasRecording={hasMasterRecording}
+              onRecordToggle={toggleMasterRecording}
+              onPlaybackToggle={toggleMasterPlayback}
+              onExport={exportMasterRecording}
             />
           </TooltipProvider>
           <TrackView

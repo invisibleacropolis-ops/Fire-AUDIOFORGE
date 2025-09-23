@@ -69,6 +69,8 @@ type PlaybackState = {
   loopEnd: number | null;
 };
 
+type MasterSyncState = 'unsynced' | 'idle' | 'scheduled';
+
 const WARM_PLAYER_POOL_SIZE = 3;
 
 function createPlayerFromAudioBuffer(audioBuffer: AudioBuffer): Tone.Player {
@@ -389,7 +391,7 @@ export function useAudioEngine() {
   // can translate Tone.now() deltas into UI playhead positions without
   // repeatedly polling Tone.Player for state.
   const playbackStateRef = useRef<Map<string, PlaybackState>>(new Map());
-  const masterSyncStateRef = useRef<Map<string, boolean>>(new Map());
+  const masterSyncStateRef = useRef<Map<string, MasterSyncState>>(new Map());
   const effectNodeRegistry = useRef<Map<string, EffectNode>>(new Map());
 
   useEffect(() => {
@@ -454,6 +456,7 @@ export function useAudioEngine() {
       warmPlayers: [],
       isBuffering: false,
     };
+    masterSyncStateRef.current.set(id, 'unsynced');
     setTracks(prev => [...prev, newTrack]);
     return id;
   }, [tracks.length]);
@@ -526,19 +529,42 @@ export function useAudioEngine() {
   );
 
   const resyncPlayerToMaster = useCallback(
-    (track: Track) => {
+    (
+      track: Track,
+      options: { scheduleStart?: boolean; offset?: number } = {}
+    ) => {
       const player = track.player;
       if (!player) {
         return;
       }
 
-      if (masterSyncStateRef.current.get(track.id) === true) {
-        return;
-      }
+      const { scheduleStart = false, offset } = options;
 
       const { start, end, duration } = getTrackSelectionBounds(track);
       const { shouldLoop } = configureLoopForTrack(track, start, end);
       const transportState = Tone.Transport.state;
+      const context = Tone.getContext();
+      const epsilon = 1 / context.sampleRate;
+      const scheduleTime =
+        transportState === 'started'
+          ? Tone.Transport.seconds + epsilon
+          : 0;
+
+      const bufferDuration =
+        track.duration ?? player.buffer?.duration ?? undefined;
+      const selectionEnd =
+        end ??
+        (duration !== undefined ? start + duration : bufferDuration ?? undefined);
+
+      let effectiveOffset = offset ?? start;
+      effectiveOffset = Math.max(start, effectiveOffset);
+      if (selectionEnd != null) {
+        effectiveOffset = Math.min(effectiveOffset, selectionEnd);
+      } else if (bufferDuration != null) {
+        effectiveOffset = Math.min(effectiveOffset, bufferDuration);
+      }
+
+      const offsetDelta = Math.max(effectiveOffset - start, 0);
 
       // Always clear any previously scheduled events before wiring the player
       // back to the master transport. When a track has been auditioned outside
@@ -547,43 +573,62 @@ export function useAudioEngine() {
       // new synced event at time 0 would otherwise throw because the timeline
       // must remain monotonic.
       player.unsync();
-
-      const context = Tone.getContext();
-      const epsilon = 1 / context.sampleRate;
-      const scheduleTime =
-        transportState === 'started'
-          ? Tone.Transport.seconds + epsilon
-          : 0;
-
       player.sync();
 
-      if (shouldLoop || duration === undefined) {
-        player.start(scheduleTime, start);
-      } else {
-        player.start(scheduleTime, start, duration);
+      let nextSyncState: MasterSyncState = 'idle';
+      let startPlayback = scheduleStart;
+      let playbackDuration: number | undefined = shouldLoop
+        ? undefined
+        : duration;
+
+      if (!shouldLoop && playbackDuration !== undefined) {
+        const remaining = playbackDuration - offsetDelta;
+        if (remaining <= 0) {
+          startPlayback = false;
+        } else {
+          playbackDuration = remaining;
+        }
       }
 
-      if (transportState === 'started') {
-        const effectiveDuration =
-          duration ?? track.duration ?? player.buffer?.duration ?? null;
-        const elapsed = Math.max(Tone.Transport.seconds - scheduleTime, 0);
-
-        let nextOffset = start;
-        if (shouldLoop && effectiveDuration && effectiveDuration > 0) {
-          const loopProgress = ((elapsed % effectiveDuration) + effectiveDuration) % effectiveDuration;
-          nextOffset = start + loopProgress;
-        } else if (effectiveDuration != null) {
-          nextOffset = Math.min(start + elapsed, start + effectiveDuration);
+      if (startPlayback) {
+        if (playbackDuration === undefined) {
+          player.start(scheduleTime, effectiveOffset);
         } else {
-          nextOffset = start + elapsed;
+          player.start(scheduleTime, effectiveOffset, playbackDuration);
+        }
+        nextSyncState = 'scheduled';
+      }
+
+      const effectiveDuration =
+        duration ?? track.duration ?? player.buffer?.duration ?? null;
+
+      if (transportState === 'started') {
+        const elapsed = Math.max(Tone.Transport.seconds - scheduleTime, 0);
+        let nextOffset = effectiveOffset;
+
+        if (shouldLoop && effectiveDuration && effectiveDuration > 0) {
+          const loopProgress =
+            ((elapsed % effectiveDuration) + effectiveDuration) % effectiveDuration;
+          nextOffset = effectiveOffset + loopProgress;
+        } else if (effectiveDuration != null) {
+          nextOffset = Math.min(
+            effectiveOffset + elapsed,
+            effectiveOffset + effectiveDuration
+          );
+        } else {
+          nextOffset = effectiveOffset + elapsed;
         }
 
         player.seek(nextOffset);
       } else {
-        player.seek(start);
+        player.seek(effectiveOffset);
       }
 
-      masterSyncStateRef.current.set(track.id, true);
+      if (!startPlayback) {
+        nextSyncState = 'idle';
+      }
+
+      masterSyncStateRef.current.set(track.id, nextSyncState);
     },
     [configureLoopForTrack, getTrackSelectionBounds]
   );
@@ -595,12 +640,12 @@ export function useAudioEngine() {
         return;
       }
 
-      if (masterSyncStateRef.current.get(track.id) === false) {
+      if (masterSyncStateRef.current.get(track.id) === 'unsynced') {
         return;
       }
 
       player.unsync();
-      masterSyncStateRef.current.set(track.id, false);
+      masterSyncStateRef.current.set(track.id, 'unsynced');
     },
     []
   );
@@ -620,13 +665,16 @@ export function useAudioEngine() {
       player.disconnect();
       player.connect(channel);
 
-      const shouldResync = masterSyncStateRef.current.get(track.id) !== false;
+      const syncState = masterSyncStateRef.current.get(track.id) ?? 'unsynced';
+      const shouldResync = syncState !== 'unsynced';
       const trackWithPlayer: Track = { ...track, player, channel };
 
       unsyncPlayerFromMaster(trackWithPlayer);
 
       if (shouldResync) {
-        resyncPlayerToMaster(trackWithPlayer);
+        resyncPlayerToMaster(trackWithPlayer, {
+          scheduleStart: syncState === 'scheduled',
+        });
       }
 
       return channel;
@@ -936,7 +984,8 @@ export function useAudioEngine() {
       }
 
       if (hasPlayer) {
-        track.player!.seek(offset);
+        const syncSource: Track = { ...track, player: track.player };
+        resyncPlayerToMaster(syncSource, { scheduleStart: true, offset });
         playbackStateRef.current.set(track.id, {
           startTime: now,
           offset,
@@ -963,6 +1012,7 @@ export function useAudioEngine() {
     configureLoopForTrack,
     ensureContextRunning,
     getTrackSelectionBounds,
+    resyncPlayerToMaster,
   ]);
 
   const pausePlayback = useCallback(() => {
@@ -1224,7 +1274,7 @@ export function useAudioEngine() {
         playheadPosition: start,
       };
       configureLoopForTrack(syncTarget, start, end);
-      resyncPlayerToMaster(syncTarget);
+      resyncPlayerToMaster(syncTarget, { scheduleStart: false });
       track.player.seek(start);
       setTracks(prev =>
         prev.map(t =>
@@ -1252,7 +1302,7 @@ export function useAudioEngine() {
         playheadPosition: start,
       };
       configureLoopForTrack(syncTarget, start, end);
-      resyncPlayerToMaster(syncTarget);
+      resyncPlayerToMaster(syncTarget, { scheduleStart: false });
       track.player.seek(start);
       setTracks(prev =>
         prev.map(t =>
@@ -1310,7 +1360,7 @@ export function useAudioEngine() {
           const resyncSource =
             latest ?? { ...trackSnapshot, player: playerInstance, playheadPosition: startPosition };
           if (resyncSource.player) {
-            resyncPlayerToMaster(resyncSource);
+            resyncPlayerToMaster(resyncSource, { scheduleStart: false });
           }
 
           playerInstance.onstop = () => {};

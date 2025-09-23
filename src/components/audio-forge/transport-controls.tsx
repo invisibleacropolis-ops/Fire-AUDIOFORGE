@@ -2,11 +2,13 @@
 
 import { Play, Pause, Rewind, StopCircle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ButtonProps } from '@/components/ui/button';
 import type { ReactNode } from 'react';
 
 type ClickHandler = () => void | Promise<void>;
+
 
 interface TransportButtonProps {
   icon: ReactNode;
@@ -74,6 +76,7 @@ export function MasterTransportControls({
   };
 
   return (
+
     <div className="flex items-center justify-center gap-4 bg-card border-t p-4">
       <TransportButton
         icon={<Rewind className="h-5 w-5" />}
@@ -103,5 +106,6 @@ export function MasterTransportControls({
         onClick={onExport}
       />
     </div>
+
   );
 }

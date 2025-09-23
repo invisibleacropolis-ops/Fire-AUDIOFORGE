@@ -591,29 +591,119 @@ export function useAudioEngine() {
   }, []);
 
   const resetPlayersToStart = useCallback(() => {
-    tracksRef.current.forEach(track => {
+    const now = Tone.now();
+    playbackStateRef.current.clear();
+
+    const nextTracks = tracksRef.current.map(track => {
+      const { start, end } = getTrackSelectionBounds(track);
+      const { loopEnd } = configureLoopForTrack(track, start, end);
+
       if (track.player?.loaded) {
-        track.player.seek(0);
+        track.player.seek(start);
+        playbackStateRef.current.set(track.id, {
+          startTime: now,
+          offset: start,
+          loopStart: start,
+          loopEnd,
+        });
+      } else {
+        playbackStateRef.current.delete(track.id);
       }
+
+      return {
+        ...track,
+        isPlaying: false,
+        playheadPosition: start,
+      };
     });
-    setTracks(prev => prev.map(track => ({ ...track, isPlaying: false })));
-  }, [setTracks]);
+
+    tracksRef.current = nextTracks;
+    setTracks(nextTracks);
+  }, [configureLoopForTrack, getTrackSelectionBounds, setTracks]);
 
   const playFromStart = useCallback(async () => {
     await ensureContextRunning();
-    Tone.Transport.stop();
-    Tone.Transport.position = 0;
-    resetPlayersToStart();
+
+    const resumingFromPause = Tone.Transport.state === 'paused';
+    const transportSeconds = resumingFromPause ? Tone.Transport.seconds : 0;
+    const now = Tone.now();
+
+    if (!resumingFromPause) {
+      Tone.Transport.stop();
+      Tone.Transport.position = 0;
+    }
+
+    playbackStateRef.current.clear();
+
+    const nextTracks = tracksRef.current.map(track => {
+      const { start, end, duration } = getTrackSelectionBounds(track);
+      const { loopEnd } = configureLoopForTrack(track, start, end);
+      const hasPlayer = Boolean(track.player?.loaded);
+
+      let offset = start;
+
+      if (resumingFromPause) {
+        let resumeOffset = start + transportSeconds;
+
+        if (loopEnd !== null && loopEnd > start) {
+          const loopLength = loopEnd - start;
+          if (loopLength > 0) {
+            const normalizedSeconds =
+              ((transportSeconds % loopLength) + loopLength) % loopLength;
+            resumeOffset = start + normalizedSeconds;
+          } else {
+            resumeOffset = start;
+          }
+        } else if (duration !== undefined) {
+          resumeOffset = Math.min(resumeOffset, start + duration);
+        } else if (track.duration != null) {
+          resumeOffset = Math.min(resumeOffset, track.duration);
+        }
+
+        if (track.duration != null) {
+          resumeOffset = Math.min(resumeOffset, track.duration);
+        }
+
+        offset = Math.max(start, resumeOffset);
+      }
+
+      if (hasPlayer) {
+        track.player!.seek(offset);
+        playbackStateRef.current.set(track.id, {
+          startTime: now,
+          offset,
+          loopStart: start,
+          loopEnd,
+        });
+      } else {
+        playbackStateRef.current.delete(track.id);
+      }
+
+      return {
+        ...track,
+        isPlaying: hasPlayer,
+        playheadPosition: hasPlayer ? offset : start,
+      };
+    });
+
+    tracksRef.current = nextTracks;
+    setTracks(nextTracks);
+
     Tone.Transport.start();
     setIsPlaying(true);
-  }, [ensureContextRunning, resetPlayersToStart]);
+  }, [
+    configureLoopForTrack,
+    ensureContextRunning,
+    getTrackSelectionBounds,
+  ]);
 
   const pausePlayback = useCallback(() => {
     if (Tone.Transport.state === 'started') {
       Tone.Transport.pause();
+      resetPlayersToStart();
       setIsPlaying(false);
     }
-  }, []);
+  }, [resetPlayersToStart]);
 
   const stopPlayback = useCallback(() => {
     Tone.Transport.stop();
@@ -627,6 +717,19 @@ export function useAudioEngine() {
     Tone.Transport.position = 0;
     resetPlayersToStart();
     setIsPlaying(false);
+  }, [resetPlayersToStart]);
+
+  useEffect(() => {
+    const handleTransportStop = () => {
+      resetPlayersToStart();
+      setIsPlaying(false);
+    };
+
+    Tone.Transport.on('stop', handleTransportStop);
+
+    return () => {
+      Tone.Transport.off('stop', handleTransportStop);
+    };
   }, [resetPlayersToStart]);
 
   const startRecording = useCallback(async () => {

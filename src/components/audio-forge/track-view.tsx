@@ -17,6 +17,7 @@ interface TrackViewProps {
   onTrackRewind: (id: string) => void;
   onTrackPlayPause: (id: string) => void;
   onTrackStop: (id: string) => void;
+  onTrackToggleLoop: (id: string) => void;
   onTrackRecord: (id: string) => void;
   onTrackImport: (id: string, file: File) => Promise<void> | void;
   onSelectionChange: (id: string, selection: { start: number; end: number } | null) => void;
@@ -32,6 +33,7 @@ export function TrackView({
   onTrackRewind,
   onTrackPlayPause,
   onTrackStop,
+  onTrackToggleLoop,
   onTrackRecord,
   onTrackImport,
   onSelectionChange,
@@ -58,6 +60,7 @@ export function TrackView({
                 onRewind={onTrackRewind}
                 onPlayPause={onTrackPlayPause}
                 onStop={onTrackStop}
+                onToggleLoop={onTrackToggleLoop}
                 onRecord={onTrackRecord}
                 onImport={onTrackImport}
                 onSelectionChange={onSelectionChange}

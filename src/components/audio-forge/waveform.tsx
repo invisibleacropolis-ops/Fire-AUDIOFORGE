@@ -10,9 +10,17 @@ interface WaveformProps {
   selection: { start: number; end: number } | null;
   onSelectionChange?: (trackId: string, selection: { start: number; end: number } | null) => void;
   duration: number | null;
+  playhead: number | null;
 }
 
-const WaveformComponent: React.FC<WaveformProps> = ({ trackId, url, onSelectionChange, duration, selection: selectionProp }) => {
+const WaveformComponent: React.FC<WaveformProps> = ({
+  trackId,
+  url,
+  onSelectionChange,
+  duration,
+  selection: selectionProp,
+  playhead,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [waveform, setWaveform] = useState<Float32Array | null>(null);
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(selectionProp);
@@ -60,7 +68,7 @@ const WaveformComponent: React.FC<WaveformProps> = ({ trackId, url, onSelectionC
     if (!canvas) return;
     const context = canvas.getContext('2d');
     if (!context) return;
-    
+
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
     const { width, height } = canvas;
@@ -69,10 +77,20 @@ const WaveformComponent: React.FC<WaveformProps> = ({ trackId, url, onSelectionC
 
     if (!waveform) return;
 
+    if (selection) {
+      const selectionStart = Math.max(0, selection.start);
+      const selectionEnd = Math.max(selectionStart, selection.end);
+      const totalDuration = duration && duration > 0 ? duration : 1;
+      const startX = (selectionStart / totalDuration) * width;
+      const endX = (selectionEnd / totalDuration) * width;
+      context.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      context.fillRect(startX, 0, endX - startX, height);
+    }
+
     context.lineWidth = 2;
-    context.strokeStyle = 'hsl(var(--accent))';
+    context.strokeStyle = '#000000';
     context.beginPath();
-    
+
     const step = Math.ceil(waveform.length / width);
     for (let i = 0; i < width; i++) {
       let min = 1.0;
@@ -87,13 +105,16 @@ const WaveformComponent: React.FC<WaveformProps> = ({ trackId, url, onSelectionC
     }
     context.stroke();
 
-    if (selection) {
-      context.fillStyle = 'hsla(var(--primary), 0.3)';
-      const startX = (selection.start / (duration || 1)) * width;
-      const endX = (selection.end / (duration || 1)) * width;
-      context.fillRect(startX, 0, endX - startX, height);
+    if (duration && duration > 0 && playhead != null) {
+      const playheadX = Math.min(width, Math.max(0, (playhead / duration) * width));
+      context.strokeStyle = '#22c55e';
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(playheadX, 0);
+      context.lineTo(playheadX, height);
+      context.stroke();
     }
-  }, [waveform, selection, duration]);
+  }, [waveform, selection, duration, playhead]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

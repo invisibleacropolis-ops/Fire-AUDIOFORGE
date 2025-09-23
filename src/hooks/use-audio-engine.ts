@@ -35,6 +35,15 @@ export type Track = {
   isRecording: boolean;
   selectionStart: number | null;
   selectionEnd: number | null;
+  isLooping: boolean;
+  playheadPosition: number;
+};
+
+type PlaybackState = {
+  startTime: number;
+  offset: number;
+  loopStart: number;
+  loopEnd: number | null;
 };
 
 function instantiateEffectNode(effect: Effect): EffectNode | null {
@@ -146,6 +155,7 @@ export function useAudioEngine() {
   const tracksRef = useRef<Track[]>([]);
   const recorderRef = useRef<Tone.Recorder | null>(null);
   const userMediaRef = useRef<Tone.UserMedia | null>(null);
+  const playbackStateRef = useRef<Map<string, PlaybackState>>(new Map());
 
   useEffect(() => {
     tracksRef.current = tracks;
@@ -195,6 +205,8 @@ export function useAudioEngine() {
       isRecording: false,
       selectionStart: null,
       selectionEnd: null,
+      isLooping: false,
+      playheadPosition: 0,
     };
     setTracks(prev => [...prev, newTrack]);
     return id;
@@ -204,21 +216,117 @@ export function useAudioEngine() {
     setTracks(prev => prev.map(t => (t.id === id ? { ...t, ...updates } : t)));
   }, []);
 
+  const getTrackSelectionBounds = useCallback(
+    (track: Track): { start: number; end: number | null; duration: number | undefined } => {
+      const bufferDuration = track.player?.buffer?.duration ?? track.duration ?? 0;
+      const start = Math.max(0, Math.min(track.selectionStart ?? 0, bufferDuration));
+
+      if (!bufferDuration) {
+        return { start: 0, end: null, duration: undefined };
+      }
+
+      if (track.selectionEnd == null) {
+        const remaining = bufferDuration - start;
+        return {
+          start,
+          end: null,
+          duration: remaining > 0 ? remaining : undefined,
+        };
+      }
+
+      const clampedEnd = Math.max(start, Math.min(track.selectionEnd, bufferDuration));
+      if (clampedEnd <= start) {
+        const remaining = bufferDuration - start;
+        return {
+          start,
+          end: null,
+          duration: remaining > 0 ? remaining : undefined,
+        };
+      }
+
+      return {
+        start,
+        end: clampedEnd,
+        duration: clampedEnd - start,
+      };
+    },
+    []
+  );
+
+  const configureLoopForTrack = useCallback(
+    (track: Track, start: number, end: number | null): { loopEnd: number | null } => {
+      if (!track.player) {
+        return { loopEnd: null };
+      }
+
+      const candidateLoopEnd = track.isLooping ? end ?? track.duration ?? null : null;
+      const shouldLoop = candidateLoopEnd !== null && candidateLoopEnd > start;
+
+      track.player.loop = shouldLoop;
+      if (shouldLoop) {
+        track.player.loopStart = start;
+        track.player.loopEnd = candidateLoopEnd;
+      }
+
+      return { loopEnd: shouldLoop ? candidateLoopEnd : null };
+    },
+    []
+  );
+
   const setTrackSelection = useCallback(
     (id: string, selection: { start: number; end: number } | null) => {
+      const target = tracksRef.current.find(track => track.id === id);
+      if (!target) {
+        return;
+      }
+
+      const nextSelectionStart = selection ? selection.start : null;
+      const nextSelectionEnd = selection ? selection.end : null;
+      const nextTrackState: Track = {
+        ...target,
+        selectionStart: nextSelectionStart,
+        selectionEnd: nextSelectionEnd,
+        playheadPosition: target.playheadPosition,
+      };
+
+      const { start, end } = getTrackSelectionBounds(nextTrackState);
+      const { loopEnd } = configureLoopForTrack(nextTrackState, start, end);
+
+      nextTrackState.playheadPosition = start;
+
+      const playback = playbackStateRef.current.get(id);
+      if (playback) {
+        playback.startTime = Tone.now();
+        playback.offset = start;
+        playback.loopStart = start;
+        playback.loopEnd = loopEnd;
+      }
+
+      tracksRef.current = tracksRef.current.map(track =>
+        track.id === id
+          ? {
+              ...track,
+              selectionStart: nextSelectionStart,
+              selectionEnd: nextSelectionEnd,
+              playheadPosition: start,
+            }
+          : track
+      );
+
       setTracks(prev =>
         prev.map(t =>
           t.id === id
             ? {
                 ...t,
-                selectionStart: selection ? selection.start : null,
-                selectionEnd: selection ? selection.end : null,
+                selectionStart: nextSelectionStart,
+                selectionEnd: nextSelectionEnd,
+                playheadPosition: start,
               }
             : t
         )
       );
     },
-    []
+    [configureLoopForTrack, getTrackSelectionBounds]
   );
 
   /**
@@ -272,12 +380,14 @@ export function useAudioEngine() {
           isRecording: false,
           selectionStart: null,
           selectionEnd: null,
+          playheadPosition: 0,
         };
 
         tracksRef.current = tracksRef.current.map(track =>
           track.id === trackId ? updatedTrack : track
         );
         setTracks(prev => prev.map(track => (track.id === trackId ? updatedTrack : track)));
+        playbackStateRef.current.delete(trackId);
 
         toast({ title: 'Audio imported successfully', description: file.name });
         shouldDispose = false;
@@ -451,6 +561,8 @@ export function useAudioEngine() {
       isRecording: false,
       selectionStart: null,
       selectionEnd: null,
+      isLooping: false,
+      playheadPosition: 0,
     };
     setTracks(prev => [...prev, newTrack]);
     toast({ title: 'Recording finished', description: 'New track added.' });
@@ -491,43 +603,6 @@ export function useAudioEngine() {
     }
   }, [isRecording, recordingTrackId, startTrackRecording, stopTrackRecording]);
 
-  const getTrackSelectionBounds = useCallback(
-    (track: Track): { start: number; end: number | null; duration: number | undefined } => {
-      const bufferDuration = track.player?.buffer?.duration ?? track.duration ?? 0;
-      const start = Math.max(0, Math.min(track.selectionStart ?? 0, bufferDuration));
-
-      if (!bufferDuration) {
-        return { start: 0, end: null, duration: undefined };
-      }
-
-      if (track.selectionEnd == null) {
-        const remaining = bufferDuration - start;
-        return {
-          start,
-          end: null,
-          duration: remaining > 0 ? remaining : undefined,
-        };
-      }
-
-      const clampedEnd = Math.max(start, Math.min(track.selectionEnd, bufferDuration));
-      if (clampedEnd <= start) {
-        const remaining = bufferDuration - start;
-        return {
-          start,
-          end: null,
-          duration: remaining > 0 ? remaining : undefined,
-        };
-      }
-
-      return {
-        start,
-        end: clampedEnd,
-        duration: clampedEnd - start,
-      };
-    },
-    []
-  );
-
   const toggleTrackPlayback = useCallback(
     async (trackId: string) => {
       const track = tracksRef.current.find(t => t.id === trackId);
@@ -540,27 +615,64 @@ export function useAudioEngine() {
         await Tone.start();
       }
 
-      const { start, duration } = getTrackSelectionBounds(track);
+      const { start, end, duration } = getTrackSelectionBounds(track);
 
       if (track.player.state === 'started') {
+        track.player.onstop = () => {};
         track.player.stop();
+        playbackStateRef.current.delete(trackId);
         track.player.seek(start);
-        setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+        setTracks(prev =>
+          prev.map(t =>
+            t.id === trackId
+              ? { ...t, isPlaying: false, playheadPosition: start }
+              : t.isPlaying
+              ? { ...t, isPlaying: false }
+              : t
+          )
+        );
         return;
       }
 
       track.player.stop();
       track.player.seek(start);
+      const { loopEnd } = configureLoopForTrack(track, start, end);
+
       track.player.onstop = () => {
-        setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+        playbackStateRef.current.delete(trackId);
+        const latest = tracksRef.current.find(t => t.id === trackId);
+        const startPosition = latest ? getTrackSelectionBounds(latest).start : 0;
+        setTracks(prev =>
+          prev.map(t =>
+            t.id === trackId
+              ? { ...t, isPlaying: false, playheadPosition: startPosition }
+              : t
+          )
+        );
         if (track.player) {
           track.player.onstop = () => {};
         }
       };
+
+      playbackStateRef.current.set(trackId, {
+        startTime: Tone.now(),
+        offset: start,
+        loopStart: start,
+        loopEnd,
+      });
+
+      setTracks(prev =>
+        prev.map(t => {
+          if (t.id === trackId) {
+            return { ...t, isPlaying: true, playheadPosition: start };
+          }
+          return t.isPlaying ? { ...t, isPlaying: false } : t;
+        })
+      );
+
       track.player.start(undefined, start, duration);
-      setTracks(prev => prev.map(t => ({ ...t, isPlaying: t.id === trackId })));
     },
-    [getTrackSelectionBounds]
+    [configureLoopForTrack, getTrackSelectionBounds]
   );
 
   const stopTrackPlayback = useCallback(
@@ -571,9 +683,15 @@ export function useAudioEngine() {
       }
 
       const { start } = getTrackSelectionBounds(track);
+      track.player.onstop = () => {};
       track.player.stop();
+      playbackStateRef.current.delete(trackId);
       track.player.seek(start);
-      setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+      setTracks(prev =>
+        prev.map(t =>
+          t.id === trackId ? { ...t, isPlaying: false, playheadPosition: start } : t
+        )
+      );
     },
     [getTrackSelectionBounds]
   );
@@ -585,13 +703,104 @@ export function useAudioEngine() {
         return;
       }
 
-      const { start } = getTrackSelectionBounds(track);
+      const { start, end } = getTrackSelectionBounds(track);
+      track.player.onstop = () => {};
       track.player.stop();
+      playbackStateRef.current.delete(trackId);
       track.player.seek(start);
-      setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
+      configureLoopForTrack(track, start, end);
+      setTracks(prev =>
+        prev.map(t =>
+          t.id === trackId ? { ...t, isPlaying: false, playheadPosition: start } : t
+        )
+      );
     },
-    [getTrackSelectionBounds]
+    [configureLoopForTrack, getTrackSelectionBounds]
   );
+
+  const toggleTrackLoop = useCallback(
+    (trackId: string) => {
+      const track = tracksRef.current.find(t => t.id === trackId);
+      if (!track) {
+        return;
+      }
+
+      const nextLooping = !track.isLooping;
+      const updatedTrack: Track = { ...track, isLooping: nextLooping };
+      const { start, end } = getTrackSelectionBounds(updatedTrack);
+      const { loopEnd } = configureLoopForTrack(updatedTrack, start, end);
+
+      const playback = playbackStateRef.current.get(trackId);
+      if (playback) {
+        playback.loopStart = start;
+        playback.loopEnd = loopEnd;
+        playback.startTime = Tone.now();
+        playback.offset = track.playheadPosition;
+      }
+
+      tracksRef.current = tracksRef.current.map(t =>
+        t.id === trackId ? { ...t, isLooping: nextLooping } : t
+      );
+
+      setTracks(prev =>
+        prev.map(t =>
+          t.id === trackId ? { ...t, isLooping: nextLooping } : t
+        )
+      );
+    },
+    [configureLoopForTrack, getTrackSelectionBounds]
+  );
+
+  useEffect(() => {
+    let rafId: number;
+
+    const updatePlayheads = () => {
+      const now = Tone.now();
+      const updates: Record<string, number> = {};
+
+      tracksRef.current.forEach(track => {
+        const playback = playbackStateRef.current.get(track.id);
+        if (!playback || !track.player || track.player.state !== 'started') {
+          return;
+        }
+
+        let position = playback.offset + (now - playback.startTime);
+        const loopStart = playback.loopStart;
+        const loopEndCandidate = playback.loopEnd ?? (track.isLooping ? track.duration ?? null : null);
+
+        if (track.isLooping && loopEndCandidate !== null && loopEndCandidate > loopStart) {
+          const loopLength = loopEndCandidate - loopStart;
+          if (loopLength > 0) {
+            const relative = position - loopStart;
+            position = loopStart + ((relative % loopLength) + loopLength) % loopLength;
+          }
+        }
+
+        if (track.duration != null) {
+          position = Math.min(position, track.duration);
+        }
+
+        if (Math.abs(track.playheadPosition - position) > 0.01) {
+          updates[track.id] = position;
+        }
+      });
+
+      if (Object.keys(updates).length > 0) {
+        setTracks(prev =>
+          prev.map(track =>
+            updates[track.id] !== undefined
+              ? { ...track, playheadPosition: updates[track.id]! }
+              : track
+          )
+        );
+      }
+
+      rafId = requestAnimationFrame(updatePlayheads);
+    };
+
+    rafId = requestAnimationFrame(updatePlayheads);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   const trimTrack = useCallback(async (trackId: string, startTime: number, endTime: number) => {
     const track = tracksRef.current.find(t => t.id === trackId);
@@ -644,7 +853,9 @@ export function useAudioEngine() {
             duration: newDuration,
             selectionStart: null,
             selectionEnd: null,
+            playheadPosition: 0,
         });
+        playbackStateRef.current.delete(trackId);
 
         toast({ title: 'Track trimmed successfully' });
     } catch(e) {
@@ -792,6 +1003,7 @@ export function useAudioEngine() {
     toggleTrackPlayback,
     stopTrackPlayback,
     rewindTrack,
+    toggleTrackLoop,
     toggleTrackRecording,
     exportProject,
     trimTrack,

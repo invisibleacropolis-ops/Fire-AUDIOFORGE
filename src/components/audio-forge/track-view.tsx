@@ -18,6 +18,7 @@ interface TrackViewProps {
   onTrackPlayPause: (id: string) => void;
   onTrackStop: (id: string) => void;
   onTrackRecord: (id: string) => void;
+  onTrackImport: (id: string, file: File) => Promise<void> | void;
   onSelectionChange: (id: string, selection: { start: number; end: number } | null) => void;
 }
 
@@ -32,6 +33,7 @@ export function TrackView({
   onTrackPlayPause,
   onTrackStop,
   onTrackRecord,
+  onTrackImport,
   onSelectionChange,
 }: TrackViewProps) {
   return (
@@ -57,6 +59,7 @@ export function TrackView({
                 onPlayPause={onTrackPlayPause}
                 onStop={onTrackStop}
                 onRecord={onTrackRecord}
+                onImport={onTrackImport}
                 onSelectionChange={onSelectionChange}
               />
             ))

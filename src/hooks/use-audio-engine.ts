@@ -221,45 +221,88 @@ export function useAudioEngine() {
     []
   );
 
-  const importAudio = useCallback(async (file: File): Promise<string | null> => {
-    try {
-      const url = URL.createObjectURL(file);
-      const player = new Tone.Player();
-      await player.load(url);
-      const duration = player.buffer.duration;
-      
-      const id = `track-${Date.now()}`;
-      const channel = new Tone.Channel(0, 0).toDestination();
-      player.connect(channel);
-      player.sync().start(0);
+  /**
+   * Load an audio file into an existing track. The previous player/url
+   * resources are disposed to avoid leaking Tone.js nodes or blob URLs so
+   * that repeated imports stay stable for long-lived sessions.
+   */
+  const importAudioToTrack = useCallback(
+    async (trackId: string, file: File): Promise<boolean> => {
+      const targetTrack = tracksRef.current.find(track => track.id === trackId);
 
-      const newTrack: Track = {
-        id,
-        name: file.name.split('.').slice(0, -1).join('.'),
-        url,
-        player,
-        channel,
-        effects: [],
-        volume: 0,
-        pan: 0,
-        isMuted: false,
-        isSoloed: false,
-        duration,
-        isPlaying: false,
-        isRecording: false,
-        selectionStart: null,
-        selectionEnd: null,
-      };
+      if (!targetTrack) {
+        toast({
+          title: 'Import failed',
+          description: 'The selected track could not be found.',
+          variant: 'destructive',
+        });
+        return false;
+      }
 
-      setTracks(prev => [...prev, newTrack]);
-      toast({ title: 'Audio imported successfully', description: file.name });
-      return id;
-    } catch (error) {
-      console.error(error);
-      toast({ title: 'Error importing audio', variant: 'destructive', description: 'The file might be corrupted or in an unsupported format.' });
-      return null;
-    }
-  }, [toast]);
+      let url: string | null = null;
+      let player: Tone.Player | null = null;
+      let shouldDispose = true;
+
+      try {
+        url = URL.createObjectURL(file);
+        const playerInstance = new Tone.Player();
+        await playerInstance.load(url);
+        player = playerInstance;
+        const duration = playerInstance.buffer.duration;
+
+        const channel = targetTrack.channel ?? new Tone.Channel(0, 0).toDestination();
+        playerInstance.connect(channel);
+        playerInstance.sync().start(0);
+
+        if (targetTrack.player) {
+          targetTrack.player.dispose();
+        }
+        if (targetTrack.url) {
+          URL.revokeObjectURL(targetTrack.url);
+        }
+
+        const updatedTrack: Track = {
+          ...targetTrack,
+          name: file.name.split('.').slice(0, -1).join('.') || file.name,
+          url,
+          player: playerInstance,
+          channel,
+          duration,
+          isPlaying: false,
+          isRecording: false,
+          selectionStart: null,
+          selectionEnd: null,
+        };
+
+        tracksRef.current = tracksRef.current.map(track =>
+          track.id === trackId ? updatedTrack : track
+        );
+        setTracks(prev => prev.map(track => (track.id === trackId ? updatedTrack : track)));
+
+        toast({ title: 'Audio imported successfully', description: file.name });
+        shouldDispose = false;
+        player = null;
+        url = null;
+        return true;
+      } catch (error) {
+        console.error(error);
+        toast({
+          title: 'Error importing audio',
+          variant: 'destructive',
+          description: 'The file might be corrupted or in an unsupported format.',
+        });
+        return false;
+      } finally {
+        if (shouldDispose) {
+          player?.dispose();
+          if (url) {
+            URL.revokeObjectURL(url);
+          }
+        }
+      }
+    },
+    [toast]
+  );
   
   const ensureContextRunning = useCallback(async () => {
     const context = Tone.getContext();
@@ -739,7 +782,7 @@ export function useAudioEngine() {
     addTrack,
     updateTrack,
     setTrackSelection,
-    importAudio,
+    importAudioToTrack,
     playFromStart,
     pausePlayback,
     stopPlayback,

@@ -1,6 +1,7 @@
 
 "use client";
 
+import { ChangeEvent, MouseEvent, useRef } from 'react';
 import type { Track as TrackType } from '@/hooks/use-audio-engine';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Waveform } from './waveform';
-import { Disc3, Mic, Pause, Play, Rewind, Scissors, StopCircle } from 'lucide-react';
+import { Disc3, Mic, Pause, Play, Rewind, Scissors, StopCircle, Upload } from 'lucide-react';
 
 interface TrackProps {
   track: TrackType;
@@ -22,6 +23,7 @@ interface TrackProps {
   onPlayPause: (id: string) => void;
   onStop: (id: string) => void;
   onRecord: (id: string) => void;
+  onImport: (id: string, file: File) => Promise<void> | void;
   onSelectionChange: (id: string, selection: { start: number; end: number } | null) => void;
 }
 
@@ -35,8 +37,10 @@ export function Track({
   onPlayPause,
   onStop,
   onRecord,
+  onImport,
   onSelectionChange,
 }: TrackProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const selection =
     track.selectionStart !== null && track.selectionEnd !== null
       ? { start: track.selectionStart, end: track.selectionEnd }
@@ -50,7 +54,7 @@ export function Track({
     onUpdate(track.id, { pan: value[0] });
   };
   
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
     onUpdate(track.id, { name: e.target.value });
   };
 
@@ -62,11 +66,24 @@ export function Track({
     onUpdate(track.id, { isSoloed: !track.isSoloed });
   };
 
-  const handleTrim = (e: React.MouseEvent) => {
+  const handleTrim = (e: MouseEvent) => {
     e.stopPropagation();
     if (selection && track) {
       onTrim(track.id, selection.start, selection.end);
       onSelectionChange(track.id, null);
+    }
+  };
+
+  const handleImportClick = (e: MouseEvent) => {
+    e.stopPropagation();
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await onImport(track.id, file);
+      event.target.value = '';
     }
   };
 
@@ -88,6 +105,19 @@ export function Track({
               onClick={(e) => e.stopPropagation()}
             />
             <div className="flex items-center justify-between gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Import audio"
+                    onClick={handleImportClick}
+                  >
+                    <Upload className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Import Audio</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -161,6 +191,13 @@ export function Track({
                 <TooltipContent>{track.isRecording ? 'Stop Recording' : 'Record'}</TooltipContent>
               </Tooltip>
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*"
+              onChange={handleFileChange}
+              className="hidden"
+            />
             <div className="flex items-center gap-2">
               <Button
                 size="sm"

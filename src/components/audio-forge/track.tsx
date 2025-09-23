@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Waveform } from './waveform';
-import { Disc3, Mic, Pause, Play, Rewind, Scissors, StopCircle, Upload } from 'lucide-react';
+import { Disc3, Mic, Pause, Play, Repeat, Rewind, Scissors, StopCircle, Upload } from 'lucide-react';
 
 interface TrackProps {
   track: TrackType;
@@ -22,6 +22,7 @@ interface TrackProps {
   onRewind: (id: string) => void;
   onPlayPause: (id: string) => void;
   onStop: (id: string) => void;
+  onToggleLoop: (id: string) => void;
   onRecord: (id: string) => void;
   onImport: (id: string, file: File) => Promise<void> | void;
   onSelectionChange: (id: string, selection: { start: number; end: number } | null) => void;
@@ -36,6 +37,7 @@ export function Track({
   onRewind,
   onPlayPause,
   onStop,
+  onToggleLoop,
   onRecord,
   onImport,
   onSelectionChange,
@@ -173,6 +175,24 @@ export function Track({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    variant={track.isLooping ? 'secondary' : 'outline'}
+                    size="icon"
+                    aria-label={track.isLooping ? 'Disable loop' : 'Enable loop'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleLoop(track.id);
+                    }}
+                    disabled={!track.player}
+                    className={cn(track.isLooping && 'bg-green-500 text-black hover:bg-green-600')}
+                  >
+                    <Repeat className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{track.isLooping ? 'Loop Enabled' : 'Loop Selection'}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
                     variant={track.isRecording ? 'destructive' : 'outline'}
                     size="icon"
                     aria-label={track.isRecording ? 'Stop recording track' : 'Record track'}
@@ -258,6 +278,7 @@ export function Track({
             url={track.url}
             duration={track.duration}
             selection={selection}
+            playhead={track.playheadPosition}
             onSelectionChange={onSelectionChange}
           />
         </div>

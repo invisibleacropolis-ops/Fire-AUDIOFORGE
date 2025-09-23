@@ -27,6 +27,7 @@ export default function AudioForge() {
     toggleTrackPlayback,
     stopTrackPlayback,
     rewindTrack,
+    toggleTrackLoop,
     toggleTrackRecording,
   } = useAudioEngine();
 
@@ -80,6 +81,7 @@ export default function AudioForge() {
             onTrackRewind={rewindTrack}
             onTrackPlayPause={toggleTrackPlayback}
             onTrackStop={stopTrackPlayback}
+            onTrackToggleLoop={toggleTrackLoop}
             onTrackRecord={toggleTrackRecording}
             onTrackImport={handleTrackFileImport}
             onSelectionChange={setTrackSelection}

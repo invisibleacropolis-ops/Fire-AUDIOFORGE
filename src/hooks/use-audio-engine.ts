@@ -6,10 +6,30 @@ import { useToast } from './use-toast';
 import * as Tone from 'tone';
 
 // Type definitions
-export type EffectType = 'reverb' | 'delay' | 'distortion' | 'chorus' | 'phaser' | 'vibrato';
+export type EffectType =
+  | 'reverb'
+  | 'delay'
+  | 'distortion'
+  | 'chorus'
+  | 'phaser'
+  | 'vibrato'
+  | 'autoFilter'
+  | 'compressor'
+  | 'bitCrusher'
+  | 'pitchShift';
 
 // Correctly type the effect nodes for Tone.js v15+
-export type EffectNode = Tone.Reverb | Tone.FeedbackDelay | Tone.Distortion | Tone.Chorus | Tone.Phaser | Tone.Vibrato;
+export type EffectNode =
+  | Tone.Reverb
+  | Tone.FeedbackDelay
+  | Tone.Distortion
+  | Tone.Chorus
+  | Tone.Phaser
+  | Tone.Vibrato
+  | Tone.AutoFilter
+  | Tone.Compressor
+  | Tone.BitCrusher
+  | Tone.PitchShift;
 
 export type Effect = {
   id: string;
@@ -91,6 +111,42 @@ function instantiateEffectNode(effect: Effect): EffectNode | null {
         wet: effect.wet,
         frequency: effect.frequency ?? 5,
         depth: effect.depth ?? 0.1,
+      });
+      break;
+    case 'autoFilter': {
+      const autoFilter = new Tone.AutoFilter({
+        wet: effect.wet,
+        frequency: effect.frequency ?? 1.5,
+        depth: effect.depth ?? 0.5,
+        baseFrequency: effect.baseFrequency ?? 200,
+        octaves: effect.octaves ?? 2,
+      });
+      autoFilter.start();
+      node = autoFilter;
+      break;
+    }
+    case 'compressor':
+      node = new Tone.Compressor({
+        wet: effect.wet,
+        threshold: effect.threshold ?? -24,
+        ratio: effect.ratio ?? 12,
+        attack: effect.attack ?? 0.003,
+        release: effect.release ?? 0.25,
+      });
+      break;
+    case 'bitCrusher':
+      node = new Tone.BitCrusher({
+        wet: effect.wet,
+        bits: effect.bits ?? 4,
+      });
+      break;
+    case 'pitchShift':
+      node = new Tone.PitchShift({
+        wet: effect.wet,
+        pitch: effect.pitch ?? 0,
+        feedback: effect.feedback ?? 0,
+        delayTime: effect.delayTime ?? 0,
+        windowSize: effect.windowSize ?? 0.1,
       });
       break;
   }

@@ -14,7 +14,18 @@ interface EffectsPanelProps {
   onTrackUpdate: (id: string, updates: Partial<Track>) => void;
 }
 
-const effectTypes: EffectType[] = ['reverb', 'delay', 'distortion', 'chorus', 'phaser', 'vibrato'];
+const effectTypes: EffectType[] = [
+    'reverb',
+    'delay',
+    'distortion',
+    'chorus',
+    'phaser',
+    'vibrato',
+    'autoFilter',
+    'compressor',
+    'bitCrusher',
+    'pitchShift',
+];
 
 function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpdate: (id: string, params: any) => void, onRemove: (id: string) => void }) {
     const handleWetChange = (value: number[]) => {
@@ -31,11 +42,11 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                 return (
                     <>
                         <div className="space-y-2">
-                            <Label className="text-xs">Decay</Label>
+                            <Label className="text-xs" title="Reverb tail length (0.1–10 seconds)">Decay (0.1–10s)</Label>
                             <Slider value={[effect.decay ?? 1.5]} onValueChange={handleParamChange('decay')} max={10} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-xs">Pre-delay</Label>
+                            <Label className="text-xs" title="Time before the reverb starts (0–1 seconds)">Pre-delay (0–1s)</Label>
                             <Slider value={[effect.preDelay ?? 0.01]} onValueChange={handleParamChange('preDelay')} max={1} min={0} step={0.01} />
                         </div>
                     </>
@@ -44,11 +55,11 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                 return (
                     <>
                         <div className="space-y-2">
-                            <Label className="text-xs">Delay Time</Label>
+                            <Label className="text-xs" title="Time between repeats (0–1 seconds)">Delay Time (0–1s)</Label>
                             <Slider value={[effect.delayTime ?? 0.25]} onValueChange={handleParamChange('delayTime')} max={1} min={0} step={0.01} />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-xs">Feedback</Label>
+                            <Label className="text-xs" title="Amount of signal fed back into the delay (0–100%)">Feedback (0–100%)</Label>
                             <Slider value={[effect.feedback ?? 0.5]} onValueChange={handleParamChange('feedback')} max={1} min={0} step={0.01} />
                         </div>
                     </>
@@ -56,7 +67,7 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
             case 'distortion':
                 return (
                     <div className="space-y-2">
-                        <Label className="text-xs">Amount</Label>
+                        <Label className="text-xs" title="Distortion intensity (0–100%)">Amount (0–100%)</Label>
                         <Slider value={[effect.distortion ?? 0.4]} onValueChange={handleParamChange('distortion')} max={1} min={0} step={0.01} />
                     </div>
                 );
@@ -64,15 +75,15 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                 return (
                     <>
                         <div className="space-y-2">
-                            <Label className="text-xs">Frequency</Label>
+                            <Label className="text-xs" title="LFO speed driving the chorus (0.1–10 Hz)">Frequency (0.1–10 Hz)</Label>
                             <Slider value={[effect.frequency ?? 1.5]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-xs">Delay Time</Label>
+                            <Label className="text-xs" title="Base delay applied to the wet signal (1–10 ms)">Delay Time (1–10 ms)</Label>
                             <Slider value={[effect.delayTime ?? 3.5]} onValueChange={handleParamChange('delayTime')} max={10} min={1} step={0.1} />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-xs">Depth</Label>
+                            <Label className="text-xs" title="Modulation depth (0–100%)">Depth (0–100%)</Label>
                             <Slider value={[effect.depth ?? 0.7]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
                         </div>
                     </>
@@ -81,15 +92,15 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                 return (
                     <>
                         <div className="space-y-2">
-                            <Label className="text-xs">Frequency</Label>
+                            <Label className="text-xs" title="LFO speed (0.1–10 Hz)">Frequency (0.1–10 Hz)</Label>
                             <Slider value={[effect.frequency ?? 0.5]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-xs">Octaves</Label>
+                            <Label className="text-xs" title="Range of the filter sweep (1–8 octaves)">Octaves (1–8)</Label>
                             <Slider value={[effect.octaves ?? 3]} onValueChange={handleParamChange('octaves')} max={8} min={1} step={1} />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-xs">Base Frequency</Label>
+                            <Label className="text-xs" title="Starting frequency of the sweep (100–1000 Hz)">Base Frequency (100–1000 Hz)</Label>
                             <Slider value={[effect.baseFrequency ?? 350]} onValueChange={handleParamChange('baseFrequency')} max={1000} min={100} step={10} />
                         </div>
                     </>
@@ -98,16 +109,113 @@ function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpda
                 return (
                     <>
                         <div className="space-y-2">
-                            <Label className="text-xs">Frequency</Label>
+                            <Label className="text-xs" title="Modulation rate (0.1–20 Hz)">Frequency (0.1–20 Hz)</Label>
                             <Slider value={[effect.frequency ?? 5]} onValueChange={handleParamChange('frequency')} max={20} min={0.1} step={0.1} />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-xs">Depth</Label>
+                            <Label className="text-xs" title="Modulation amount (0–100%)">Depth (0–100%)</Label>
                             <Slider value={[effect.depth ?? 0.1]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
                         </div>
                     </>
                 );
-            default: 
+            case 'autoFilter':
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="LFO speed modulating the filter (0.1–10 Hz)">Frequency (0.1–10 Hz)</Label>
+                            <Slider value={[effect.frequency ?? 1.5]} onValueChange={handleParamChange('frequency')} max={10} min={0.1} step={0.1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Depth of the sweep (0–100%)">Depth (0–100%)</Label>
+                            <Slider value={[effect.depth ?? 0.5]} onValueChange={handleParamChange('depth')} max={1} min={0} step={0.01} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Starting frequency of the auto filter (20–2000 Hz)">Base Frequency (20–2000 Hz)</Label>
+                            <Slider value={[effect.baseFrequency ?? 200]} onValueChange={handleParamChange('baseFrequency')} max={2000} min={20} step={10} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Range of the sweep in octaves (0.1–8)">Octaves (0.1–8)</Label>
+                            <Slider value={[effect.octaves ?? 2]} onValueChange={handleParamChange('octaves')} max={8} min={0.1} step={0.1} />
+                        </div>
+                    </>
+                );
+            case 'compressor':
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Signal level where compression begins (-60 to 0 dB)">Threshold (-60 to 0 dB)</Label>
+                            <Slider value={[effect.threshold ?? -24]} onValueChange={handleParamChange('threshold')} max={0} min={-60} step={1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Amount of compression applied (1:1 to 20:1)">Ratio (1–20:1)</Label>
+                            <Slider value={[effect.ratio ?? 12]} onValueChange={handleParamChange('ratio')} max={20} min={1} step={0.1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Time for the compressor to react (1–1000 ms)">Attack (1–1000 ms)</Label>
+                            <Slider
+                                value={[(effect.attack ?? 0.003) * 1000]}
+                                onValueChange={(value) => {
+                                    const [ms = 0] = value;
+                                    onUpdate(effect.id, { attack: ms / 1000 });
+                                }}
+                                max={1000}
+                                min={1}
+                                step={1}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Time to release compression (10–2000 ms)">Release (10–2000 ms)</Label>
+                            <Slider
+                                value={[(effect.release ?? 0.25) * 1000]}
+                                onValueChange={(value) => {
+                                    const [ms = 0] = value;
+                                    onUpdate(effect.id, { release: ms / 1000 });
+                                }}
+                                max={2000}
+                                min={10}
+                                step={10}
+                            />
+                        </div>
+                    </>
+                );
+            case 'bitCrusher':
+                return (
+                    <div className="space-y-2">
+                        <Label className="text-xs" title="Bit depth reduction (1–16 bits)">Bit Depth (1–16 bits)</Label>
+                        <Slider value={[effect.bits ?? 4]} onValueChange={handleParamChange('bits')} max={16} min={1} step={1} />
+                    </div>
+                );
+            case 'pitchShift':
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Pitch offset in semitones (-12 to +12)">Pitch (-12 to +12 st)</Label>
+                            <Slider value={[effect.pitch ?? 0]} onValueChange={handleParamChange('pitch')} max={12} min={-12} step={1} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Amount of pitch-shift signal fed back (0–95%)">Feedback (0–95%)</Label>
+                            <Slider value={[effect.feedback ?? 0]} onValueChange={handleParamChange('feedback')} max={0.95} min={0} step={0.01} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Delay before resampling (0–1 s)">Delay Time (0–1s)</Label>
+                            <Slider value={[effect.delayTime ?? 0]} onValueChange={handleParamChange('delayTime')} max={1} min={0} step={0.01} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs" title="Window size for pitch detection (30–500 ms)">Window Size (30–500 ms)</Label>
+                            <Slider
+                                value={[(effect.windowSize ?? 0.1) * 1000]}
+                                onValueChange={(value) => {
+                                    const [ms = 0] = value;
+                                    onUpdate(effect.id, { windowSize: ms / 1000 });
+                                }}
+                                max={500}
+                                min={30}
+                                step={10}
+                            />
+                        </div>
+                    </>
+                );
+            default:
                 return null;
         }
     }
@@ -201,6 +309,51 @@ export function EffectsPanel({ track, onTrackUpdate }: EffectsPanelProps) {
                     wet: 0.5,
                     frequency: 5,
                     depth: 0.1,
+                    node: null
+                };
+                break;
+            case 'autoFilter':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    frequency: 1.5,
+                    depth: 0.5,
+                    baseFrequency: 200,
+                    octaves: 2,
+                    node: null
+                };
+                break;
+            case 'compressor':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    threshold: -24,
+                    ratio: 12,
+                    attack: 0.003,
+                    release: 0.25,
+                    node: null
+                };
+                break;
+            case 'bitCrusher':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    bits: 4,
+                    node: null
+                };
+                break;
+            case 'pitchShift':
+                newEffect = {
+                    id: `${effectType}-${Date.now()}`,
+                    type: effectType,
+                    wet: 0.5,
+                    pitch: 0,
+                    feedback: 0,
+                    delayTime: 0,
+                    windowSize: 0.1,
                     node: null
                 };
                 break;

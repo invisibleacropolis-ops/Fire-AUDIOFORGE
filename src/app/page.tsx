@@ -22,7 +22,7 @@ export default function AudioForge() {
     updateTrack,
     setTrackSelection,
     exportProject,
-    importAudio,
+    importAudioToTrack,
     trimTrack,
     toggleTrackPlayback,
     stopTrackPlayback,
@@ -34,17 +34,17 @@ export default function AudioForge() {
 
   const selectedTrack = tracks.find(t => t.id === selectedTrackId) ?? null;
 
-  const handleFileImport = async (file: File) => {
-    const newTrackId = await importAudio(file);
-    if (newTrackId) {
-      setSelectedTrackId(newTrackId);
+  const handleTrackFileImport = async (trackId: string, file: File) => {
+    const didImport = await importAudioToTrack(trackId, file);
+    if (didImport) {
+      setSelectedTrackId(trackId);
     }
   };
 
   const handleAddNewTrack = () => {
     const newTrackId = addTrack();
     setSelectedTrackId(newTrackId);
-  }
+  };
 
   if (!isReady) {
     return (
@@ -59,7 +59,7 @@ export default function AudioForge() {
 
   return (
     <div className="flex h-screen w-full flex-col bg-background text-foreground font-body">
-      <AppHeader onImport={handleFileImport} onExport={exportProject} />
+      <AppHeader onExport={exportProject} />
       <main className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col">
           <MasterTransportControls
@@ -81,6 +81,7 @@ export default function AudioForge() {
             onTrackPlayPause={toggleTrackPlayback}
             onTrackStop={stopTrackPlayback}
             onTrackRecord={toggleTrackRecording}
+            onTrackImport={handleTrackFileImport}
             onSelectionChange={setTrackSelection}
           />
         </div>

@@ -9,6 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../ui/label';
 import { Slider } from '../ui/slider';
 
+/**
+ * Sidebar component that edits a track's effect stack.
+ *
+ * The panel converts UI gestures into mutations on the track.effects array,
+ * leaving the hook to rebuild the Tone.js chain.
+ */
 interface EffectsPanelProps {
   track: Track | null;
   onTrackUpdate: (id: string, updates: Partial<Track>) => void;
@@ -29,10 +35,13 @@ const effectTypes: EffectType[] = [
 
 function EffectControls({ effect, onUpdate, onRemove }: { effect: Effect, onUpdate: (id: string, params: any) => void, onRemove: (id: string) => void }) {
     const handleWetChange = (value: number[]) => {
+        // Wet slider writes through to the effect descriptor which the engine
+        // converts into Tone node wet values during re-chaining.
         onUpdate(effect.id, { wet: value[0] });
     };
-    
+
     const handleParamChange = (param: string) => (value: number[]) => {
+        // Each param slider targets a serialized property (e.g., decay, ratio).
         onUpdate(effect.id, { [param]: value[0] });
     };
 
@@ -250,6 +259,8 @@ export function EffectsPanel({ track, onTrackUpdate }: EffectsPanelProps) {
     
     const handleAddEffect = (effectType: EffectType) => {
         let newEffect: Effect;
+        // Default parameter sets mirror Tone.js defaults so the engine can
+        // instantiate nodes without additional mapping when the list changes.
         switch (effectType) {
             case 'reverb':
                 newEffect = {
@@ -364,11 +375,15 @@ export function EffectsPanel({ track, onTrackUpdate }: EffectsPanelProps) {
     };
 
     const handleUpdateEffect = (effectId: string, params: any) => {
+        // Persist parameter changes so useAudioEngine can rebuild the Tone node
+        // graph the next time the track array changes.
         const updatedEffects = track.effects.map(e => e.id === effectId ? { ...e, ...params } : e);
         onTrackUpdate(track.id, { effects: updatedEffects });
     };
-    
+
     const handleRemoveEffect = (effectId: string) => {
+        // Removing an effect simply drops its descriptor; the engine cleanup
+        // effect disposes the Tone node instances.
         const updatedEffects = track.effects.filter(e => e.id !== effectId);
         onTrackUpdate(track.id, { effects: updatedEffects });
     };

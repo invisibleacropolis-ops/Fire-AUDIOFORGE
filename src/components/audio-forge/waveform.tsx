@@ -4,6 +4,13 @@
 import React, { useRef, useEffect, useCallback, useState, memo } from 'react';
 import * as Tone from 'tone';
 
+/**
+ * Lightweight canvas renderer for track audio.
+ *
+ * Selection gestures notify the engine so it can update playback bounds and
+ * loop regions. The canvas also reflects playhead updates coming from
+ * useAudioEngine's scheduling loop.
+ */
 interface WaveformProps {
   trackId: string;
   url?: string;
@@ -54,7 +61,7 @@ const WaveformComponent: React.FC<WaveformProps> = ({
     };
     loadWaveform();
 
-    // Reset selection when URL changes
+    // Reset selection when URL changes so transport loop bounds remain valid.
     setSelection(null);
     onSelectionChange?.(trackId, null);
 
@@ -78,6 +85,8 @@ const WaveformComponent: React.FC<WaveformProps> = ({
     if (!waveform) return;
 
     if (selection) {
+      // Visually highlight the selected region so users understand which span
+      // will be looped or trimmed by engine actions.
       const selectionStart = Math.max(0, selection.start);
       const selectionEnd = Math.max(selectionStart, selection.end);
       const totalDuration = duration && duration > 0 ? duration : 1;
@@ -106,6 +115,8 @@ const WaveformComponent: React.FC<WaveformProps> = ({
     context.stroke();
 
     if (duration && duration > 0 && playhead != null) {
+      // Overlay the engine-driven playhead to mirror the live transport
+      // position.
       const playheadX = Math.min(width, Math.max(0, (playhead / duration) * width));
       context.strokeStyle = '#22c55e';
       context.lineWidth = 2;
@@ -135,6 +146,7 @@ const WaveformComponent: React.FC<WaveformProps> = ({
   const pixelsToTime = (pixels: number) => {
     const canvas = canvasRef.current;
     if (!canvas || !duration) return 0;
+    // Convert drag coordinates into seconds relative to the current buffer.
     return Math.max(0, (pixels / canvas.width) * duration);
   };
 
@@ -143,6 +155,7 @@ const WaveformComponent: React.FC<WaveformProps> = ({
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     setIsDragging(true);
+    // Start a new selection range anchored at the click position.
     dragStartRef.current = x;
     const time = pixelsToTime(x);
     const newSelection = { start: time, end: time };
@@ -155,6 +168,8 @@ const WaveformComponent: React.FC<WaveformProps> = ({
     const x = e.clientX - rect.left;
     const startTime = pixelsToTime(dragStartRef.current);
     const endTime = pixelsToTime(x);
+    // Normalize dragging in either direction so the engine always receives a
+    // start <= end pair.
     const newSelection = {
       start: Math.min(startTime, endTime),
       end: Math.max(startTime, endTime)
@@ -165,6 +180,8 @@ const WaveformComponent: React.FC<WaveformProps> = ({
   const handleMouseUp = () => {
     if (!isDragging) return;
     setIsDragging(false);
+    // Only persist the selection when a real range was drawn; otherwise we
+    // clear it to mirror DAW selection semantics.
     if (selection && selection.start !== selection.end) {
       onSelectionChange?.(trackId, selection);
     } else {

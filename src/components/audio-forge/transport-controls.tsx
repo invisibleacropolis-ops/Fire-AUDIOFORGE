@@ -10,6 +10,10 @@ import type { ReactNode } from 'react';
 type ClickHandler = () => void | Promise<void>;
 
 
+/**
+ * Shared transport button wrapper so tooltips and button chrome remain
+ * consistent. The handlers feed directly into the engine's transport actions.
+ */
 interface TransportButtonProps {
   icon: ReactNode;
   label: string;
@@ -50,6 +54,11 @@ export function TransportButton({
   );
 }
 
+/**
+ * Props map to the high-level transport commands exposed by the engine hook.
+ * Each callback is intentionally imperative so we can trigger Tone.start()
+ * inside the handler when required.
+ */
 interface MasterTransportControlsProps {
   isPlaying: boolean;
   onPlay: ClickHandler;
@@ -71,6 +80,8 @@ export function MasterTransportControls({
     if (isPlaying) {
       void onPause();
     } else {
+      // Master play always rewinds before starting so the engine can sync
+      // every Tone.Player against the Transport.
       void onPlay();
     }
   };

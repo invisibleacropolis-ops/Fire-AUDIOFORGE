@@ -66,6 +66,14 @@ type PlaybackState = {
   loopEnd: number | null;
 };
 
+/**
+ * Build a Tone.js node for the provided effect definition.
+ *
+ * Effects are instantiated on demand so we can serialize the lightweight
+ * configuration in React state while recreating the heavier DSP nodes when
+ * chaining players. Each case maps the persisted parameters to Tone's
+ * constructor signature for v15+.
+ */
 function instantiateEffectNode(effect: Effect): EffectNode | null {
   let node: EffectNode | null = null;
 
@@ -154,7 +162,14 @@ function instantiateEffectNode(effect: Effect): EffectNode | null {
   return node;
 }
 
-// Helper to convert AudioBuffer to WAV
+/**
+ * Convert an AudioBuffer into a downloadable WAV Blob.
+ *
+ * The offline renderer and trim feature both rely on Tone.js buffers. To allow
+ * exporting those buffers we manually build a RIFF/WAV header and interleave
+ * the PCM samples. The resulting blob can be converted to an object URL for
+ * downloads or reloaded into a Player.
+ */
 function bufferToWave(abuffer: AudioBuffer): Blob {
     const numOfChan = abuffer.numberOfChannels;
     const C = abuffer.getChannelData(0);
@@ -200,6 +215,14 @@ function bufferToWave(abuffer: AudioBuffer): Blob {
 }
 
 
+/**
+ * React hook that encapsulates the Tone.js backed audio engine.
+ *
+ * The hook abstracts track lifecycle (load, playback, record, trim), master
+ * transport control, and effect routing while exposing imperative callbacks for
+ * UI components. Tone.js state lives behind refs so React renders stay pure and
+ * deterministic.
+ */
 export function useAudioEngine() {
   const [isReady, setIsReady] = useState(false);
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -211,6 +234,9 @@ export function useAudioEngine() {
   const tracksRef = useRef<Track[]>([]);
   const recorderRef = useRef<Tone.Recorder | null>(null);
   const userMediaRef = useRef<Tone.UserMedia | null>(null);
+  // playbackStateRef keeps a lightweight clock for every playing track so we
+  // can translate Tone.now() deltas into UI playhead positions without
+  // repeatedly polling Tone.Player for state.
   const playbackStateRef = useRef<Map<string, PlaybackState>>(new Map());
 
   useEffect(() => {
@@ -219,15 +245,18 @@ export function useAudioEngine() {
 
   useEffect(() => {
     const init = async () => {
-      // start() is now implicitly called when needed and returns a promise
-      // It's better to call it on a user interaction, like a button click
+      // Tone.js contexts must be primed inside a user gesture, so the hook only
+      // prepares simple state and leaves Tone.start() to the caller when
+      // transport actions actually fire.
       setIsReady(true);
       recorderRef.current = new Tone.Recorder();
     };
-    init();
+    void init();
 
     return () => {
-      // Cleanup Tone.js objects
+      // Dispose every node we created so React unmounts do not leak WebAudio
+      // resources or blob URLs. When a track is destroyed we release its
+      // Player, Channel, effect nodes, and any object URLs for imported audio.
       tracksRef.current.forEach(t => {
         t.player?.dispose();
         t.channel?.dispose();
@@ -240,7 +269,7 @@ export function useAudioEngine() {
       userMediaRef.current?.dispose();
       Tone.Transport.stop();
       Tone.Transport.cancel();
-    }
+    };
   }, []);
 
   const addTrack = useCallback((): string => {
@@ -320,6 +349,8 @@ export function useAudioEngine() {
 
       track.player.loop = shouldLoop;
       if (shouldLoop) {
+        // Tone.Player expects loopStart/loopEnd in seconds relative to the
+        // underlying buffer.
         track.player.loopStart = start;
         track.player.loopEnd = candidateLoopEnd;
       }
@@ -539,6 +570,7 @@ export function useAudioEngine() {
 
   const stopTrackRecording = useCallback(async (trackId: string) => {
     if (!recorderRef.current || !isRecording || recordingTrackId !== trackId) return;
+    // Recorder.stop() resolves with a Blob containing the captured PCM data.
     const recording = await recorderRef.current.stop();
     setIsRecording(false);
     setRecordingTrackId(null);
@@ -588,6 +620,8 @@ export function useAudioEngine() {
     }
 
     if (!recorderRef.current || !isRecording) return;
+    // Fallback path creates a new track when recording outside the context of
+    // an existing strip.
     const recording = await recorderRef.current.stop();
     setIsRecording(false);
 
@@ -639,6 +673,8 @@ export function useAudioEngine() {
         userMediaRef.current = new Tone.UserMedia();
         await userMediaRef.current.open();
       }
+      // Route the microphone feed through a shared Tone.Recorder so we can
+      // capture live audio and feed it back into a synced Player.
       userMediaRef.current.connect(recorderRef.current!);
       recorderRef.current?.start();
       setIsRecording(true);
@@ -710,6 +746,8 @@ export function useAudioEngine() {
         }
       };
 
+      // Store the Tone.now() offset used by requestAnimationFrame to drive the
+      // UI playhead while the Player runs inside the AudioContext timeline.
       playbackStateRef.current.set(trackId, {
         startTime: Tone.now(),
         offset: start,
@@ -726,6 +764,9 @@ export function useAudioEngine() {
         })
       );
 
+      // Tone.Player start signature: (time, offset, duration). By syncing the
+      // offset with the selection bounds we support partial playback without
+      // re-slicing the buffer.
       track.player.start(undefined, start, duration);
     },
     [configureLoopForTrack, getTrackSelectionBounds]
@@ -810,6 +851,9 @@ export function useAudioEngine() {
   useEffect(() => {
     let rafId: number;
 
+    // Mirror Tone.js playback with UI playheads. We cannot rely on Tone
+    // scheduling callbacks for UI because React state updates must run on the
+    // main thread, so we sample Tone.now() inside requestAnimationFrame.
     const updatePlayheads = () => {
       const now = Tone.now();
       const updates: Record<string, number> = {};
@@ -858,6 +902,13 @@ export function useAudioEngine() {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
+  /**
+   * Destructively trims a track's buffer to the provided time range.
+   *
+   * The Tone.Player buffer is copied into a new AudioBuffer containing only the
+   * selected window. We then rebuild the Player instance so scheduling and
+   * effect routing stay in sync with the shorter asset.
+   */
   const trimTrack = useCallback(async (trackId: string, startTime: number, endTime: number) => {
     const track = tracksRef.current.find(t => t.id === trackId);
     if (!track || !track.player?.loaded || !track.duration) {
@@ -920,6 +971,13 @@ export function useAudioEngine() {
     }
 }, [updateTrack, toast]);
 
+  /**
+   * Render the current session into a WAV mixdown.
+   *
+   * Export uses Tone.Offline so every track plays from the beginning with its
+   * current mute/solo state, channel settings, and effect chain. The offline
+   * buffer is converted to a Blob which we immediately trigger as a download.
+   */
   const exportProject = useCallback(async () => {
     if (tracks.filter(t => t.url).length === 0) {
       toast({ title: 'Cannot export empty project', variant: 'destructive' });
@@ -950,6 +1008,10 @@ export function useAudioEngine() {
             return;
         }
   
+      // Tone.Offline deterministically replays the scene without the live
+      // Transport so we can render a bounce. We recreate the mix graph inside
+      // the callback, honoring solo/mute logic and chaining fresh effect nodes
+      // per track before starting each Player at time 0.
       const offlineBuffer = await Tone.Offline(async () => {
         validTracks.forEach(track => {
           const channel = new Tone.Channel();
@@ -973,6 +1035,8 @@ export function useAudioEngine() {
           player.start(0);
         });
 
+        // Wait for every Player in the offline context to finish scheduling
+        // before Tone resolves the rendered buffer.
         await Tone.loaded();
       }, duration);
 
@@ -1009,7 +1073,10 @@ export function useAudioEngine() {
       }
 
       if(track.player && track.channel) {
-        // Dispose old effects before creating new ones
+        // Rebuild the effect chain whenever the declarative effect list
+        // changes. Tone.js does not automatically diff nodes, so we dispose the
+        // previous instances and re-chain the Player through the fresh nodes
+        // before connecting to the track's Channel bus.
         track.effects.forEach(e => e.node?.dispose());
         track.player.disconnect();
 

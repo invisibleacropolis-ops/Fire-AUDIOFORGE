@@ -387,11 +387,11 @@ export function useAudioEngine() {
         return;
       }
 
-      const { start, end } = getTrackSelectionBounds(track);
-      player.sync();
-      player.start(0);
-      player.seek(start);
+      const { start, end, duration } = getTrackSelectionBounds(track);
       configureLoopForTrack(track, start, end);
+      player.sync();
+      player.start(0, start, duration);
+      player.seek(start);
       masterSyncStateRef.current.set(track.id, true);
     },
     [configureLoopForTrack, getTrackSelectionBounds]
@@ -470,6 +470,8 @@ export function useAudioEngine() {
         playback.offset = start;
         playback.loopStart = start;
         playback.loopEnd = loopEnd;
+      } else if (target.player?.loaded && target.player.state !== 'started') {
+        target.player.seek(start);
       }
 
       tracksRef.current = tracksRef.current.map(track =>

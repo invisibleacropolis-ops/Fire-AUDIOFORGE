@@ -498,13 +498,51 @@ export function useAudioEngine() {
 
       const { start, end, duration } = getTrackSelectionBounds(track);
       const { shouldLoop } = configureLoopForTrack(track, start, end);
+      const transportState = Tone.Transport.state;
+
+      // Always clear any previously scheduled events before wiring the player
+      // back to the master transport. When a track has been auditioned outside
+      // of the transport (`Player.start` without `sync()`), Tone keeps the
+      // unsynced start time in the internal StateTimeline. Attempting to add a
+      // new synced event at time 0 would otherwise throw because the timeline
+      // must remain monotonic.
+      player.unsync();
+
+      const context = Tone.getContext();
+      const epsilon = 1 / context.sampleRate;
+      const scheduleTime =
+        transportState === 'started'
+          ? Tone.Transport.seconds + epsilon
+          : 0;
+
       player.sync();
+
       if (shouldLoop || duration === undefined) {
-        player.start(0, start);
+        player.start(scheduleTime, start);
       } else {
-        player.start(0, start, duration);
+        player.start(scheduleTime, start, duration);
       }
-      player.seek(start);
+
+      if (transportState === 'started') {
+        const effectiveDuration =
+          duration ?? track.duration ?? player.buffer?.duration ?? null;
+        const elapsed = Math.max(Tone.Transport.seconds - scheduleTime, 0);
+
+        let nextOffset = start;
+        if (shouldLoop && effectiveDuration && effectiveDuration > 0) {
+          const loopProgress = ((elapsed % effectiveDuration) + effectiveDuration) % effectiveDuration;
+          nextOffset = start + loopProgress;
+        } else if (effectiveDuration != null) {
+          nextOffset = Math.min(start + elapsed, start + effectiveDuration);
+        } else {
+          nextOffset = start + elapsed;
+        }
+
+        player.seek(nextOffset);
+      } else {
+        player.seek(start);
+      }
+
       masterSyncStateRef.current.set(track.id, true);
     },
     [configureLoopForTrack, getTrackSelectionBounds]

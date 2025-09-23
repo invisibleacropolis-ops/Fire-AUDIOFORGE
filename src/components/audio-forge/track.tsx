@@ -13,6 +13,13 @@ import { cn } from '@/lib/utils';
 import { Waveform } from './waveform';
 import { Disc3, Mic, Pause, Play, Repeat, Rewind, Scissors, StopCircle, Upload } from 'lucide-react';
 
+/**
+ * UI shell for a single track strip.
+ *
+ * Props mirror the imperative handlers exposed by the audio engine so that the
+ * component can forward user gestures (transport, selection, trimming) back to
+ * Tone.js without embedding engine logic directly in the view layer.
+ */
 interface TrackProps {
   track: TrackType;
   isSelected: boolean;
@@ -28,6 +35,12 @@ interface TrackProps {
   onSelectionChange: (id: string, selection: { start: number; end: number } | null) => void;
 }
 
+/**
+ * Render the per-track control surface and waveform editor.
+ *
+ * The component is intentionally stateless beyond transient selection UI and
+ * relies on callbacks to notify the engine about every change.
+ */
 export function Track({
   track,
   isSelected,
@@ -49,10 +62,12 @@ export function Track({
       : null;
 
   const handleVolumeChange = (value: number[]) => {
+    // Maps the slider's dB value to Tone.Channel.volume via onUpdate.
     onUpdate(track.id, { volume: value[0] });
   };
 
   const handlePanChange = (value: number[]) => {
+    // Mutates the stereo pan automation in the engine's Channel node.
     onUpdate(track.id, { pan: value[0] });
   };
   
@@ -71,6 +86,8 @@ export function Track({
   const handleTrim = (e: MouseEvent) => {
     e.stopPropagation();
     if (selection && track) {
+      // Only trim when a non-empty selection exists; after trimming we clear the
+      // selection so subsequent trims require explicit user input.
       onTrim(track.id, selection.start, selection.end);
       onSelectionChange(track.id, null);
     }
@@ -106,6 +123,7 @@ export function Track({
               className="h-8 text-sm font-semibold"
               onClick={(e) => e.stopPropagation()}
             />
+            {/* Button cluster proxies transport commands back to the engine. */}
             <div className="flex items-center justify-between gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -218,6 +236,7 @@ export function Track({
               onChange={handleFileChange}
               className="hidden"
             />
+            {/* Muting/Soloing updates channel gain routing through onUpdate. */}
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
@@ -273,6 +292,8 @@ export function Track({
           </div>
         </TooltipProvider>
         <div className="flex-1">
+          {/* Waveform surfaces selection changes so the engine can configure the
+              Player loop and transport bounds. */}
           <Waveform
             trackId={track.id}
             url={track.url}

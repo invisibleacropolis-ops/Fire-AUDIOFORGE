@@ -74,6 +74,17 @@ type PlaybackState = {
  * chaining players. Each case maps the persisted parameters to Tone's
  * constructor signature for v15+.
  */
+function applyWetValue(node: any, wet: number) {
+  if (!node) {
+    return;
+  }
+
+  const candidateWet = (node as { wet?: { value: number } }).wet;
+  if (candidateWet && typeof candidateWet.value === 'number') {
+    candidateWet.value = wet;
+  }
+}
+
 function instantiateEffectNode(effect: Effect): EffectNode | null {
   let node: EffectNode | null = null;
 
@@ -133,21 +144,25 @@ function instantiateEffectNode(effect: Effect): EffectNode | null {
       node = autoFilter;
       break;
     }
-    case 'compressor':
-      node = new Tone.Compressor({
-        wet: effect.wet,
+    case 'compressor': {
+      const compressor = new Tone.Compressor({
         threshold: effect.threshold ?? -24,
         ratio: effect.ratio ?? 12,
         attack: effect.attack ?? 0.003,
         release: effect.release ?? 0.25,
       });
+      applyWetValue(compressor, effect.wet);
+      node = compressor;
       break;
-    case 'bitCrusher':
-      node = new Tone.BitCrusher({
-        wet: effect.wet,
+    }
+    case 'bitCrusher': {
+      const bitCrusher = new Tone.BitCrusher({
         bits: effect.bits ?? 4,
       });
+      applyWetValue(bitCrusher, effect.wet);
+      node = bitCrusher;
       break;
+    }
     case 'pitchShift':
       node = new Tone.PitchShift({
         wet: effect.wet,
@@ -238,6 +253,7 @@ export function useAudioEngine() {
   // can translate Tone.now() deltas into UI playhead positions without
   // repeatedly polling Tone.Player for state.
   const playbackStateRef = useRef<Map<string, PlaybackState>>(new Map());
+  const masterSyncStateRef = useRef<Map<string, boolean>>(new Map());
 
   useEffect(() => {
     tracksRef.current = tracks;
@@ -360,6 +376,73 @@ export function useAudioEngine() {
     []
   );
 
+  const resyncPlayerToMaster = useCallback(
+    (track: Track) => {
+      const player = track.player;
+      if (!player) {
+        return;
+      }
+
+      if (masterSyncStateRef.current.get(track.id) === true) {
+        return;
+      }
+
+      const { start, end } = getTrackSelectionBounds(track);
+      player.sync();
+      player.start(0);
+      player.seek(start);
+      configureLoopForTrack(track, start, end);
+      masterSyncStateRef.current.set(track.id, true);
+    },
+    [configureLoopForTrack, getTrackSelectionBounds]
+  );
+
+  const unsyncPlayerFromMaster = useCallback(
+    (track: Track) => {
+      const player = track.player;
+      if (!player) {
+        return;
+      }
+
+      if (masterSyncStateRef.current.get(track.id) === false) {
+        return;
+      }
+
+      player.unsync();
+      masterSyncStateRef.current.set(track.id, false);
+    },
+    []
+  );
+
+  /**
+   * Prepare a Tone.Player for use within a track's signal chain.
+   *
+   * The helper centralizes the wiring required whenever we replace a track's
+   * player instance. It ensures the player is routed through the track's
+   * channel, defaults to an unsynced state for per-track transport controls,
+   * and optionally re-synchronizes with the global master transport when the
+   * track expects to participate in project-wide playback.
+   */
+  const prepareTrackPlayer = useCallback(
+    (track: Track, player: Tone.Player): Tone.Channel => {
+      const channel = track.channel ?? new Tone.Channel(0, 0).toDestination();
+      player.disconnect();
+      player.connect(channel);
+
+      const shouldResync = masterSyncStateRef.current.get(track.id) !== false;
+      const trackWithPlayer: Track = { ...track, player, channel };
+
+      unsyncPlayerFromMaster(trackWithPlayer);
+
+      if (shouldResync) {
+        resyncPlayerToMaster(trackWithPlayer);
+      }
+
+      return channel;
+    },
+    [resyncPlayerToMaster, unsyncPlayerFromMaster]
+  );
+
   const setTrackSelection = useCallback(
     (id: string, selection: { start: number; end: number } | null) => {
       const target = tracksRef.current.find(track => track.id === id);
@@ -445,10 +528,6 @@ export function useAudioEngine() {
         player = playerInstance;
         const duration = playerInstance.buffer.duration;
 
-        const channel = targetTrack.channel ?? new Tone.Channel(0, 0).toDestination();
-        playerInstance.connect(channel);
-        playerInstance.sync().start(0);
-
         if (targetTrack.player) {
           targetTrack.player.dispose();
         }
@@ -456,12 +535,12 @@ export function useAudioEngine() {
           URL.revokeObjectURL(targetTrack.url);
         }
 
-        const updatedTrack: Track = {
+        const baseTrack: Track = {
           ...targetTrack,
           name: file.name.split('.').slice(0, -1).join('.') || file.name,
           url,
           player: playerInstance,
-          channel,
+          channel: targetTrack.channel ?? new Tone.Channel(0, 0).toDestination(),
           duration,
           isPlaying: false,
           isRecording: false,
@@ -469,6 +548,9 @@ export function useAudioEngine() {
           selectionEnd: null,
           playheadPosition: 0,
         };
+
+        const channel = prepareTrackPlayer(baseTrack, playerInstance);
+        const updatedTrack: Track = { ...baseTrack, channel };
 
         tracksRef.current = tracksRef.current.map(track =>
           track.id === trackId ? updatedTrack : track
@@ -498,7 +580,7 @@ export function useAudioEngine() {
         }
       }
     },
-    [toast]
+    [prepareTrackPlayer, toast]
   );
   
   const ensureContextRunning = useCallback(async () => {
@@ -586,32 +668,35 @@ export function useAudioEngine() {
     await player.load(url);
     const duration = player.buffer.duration;
 
-    const channel = track.channel ?? new Tone.Channel(0, 0).toDestination();
-    player.connect(channel);
-    player.sync().start(0);
-
     track.player?.dispose();
     if (track.url) {
       URL.revokeObjectURL(track.url);
     }
 
-    setTracks(prev => prev.map(t => (
-      t.id === trackId
-        ? {
-            ...t,
-            url,
-            player,
-            channel,
-            duration,
-            isRecording: false,
-            isPlaying: false,
-            selectionStart: null,
-            selectionEnd: null,
-          }
-        : t
-    )));
+    const preparedTrack: Track = {
+      ...track,
+      url,
+      player,
+      channel: track.channel ?? new Tone.Channel(0, 0).toDestination(),
+      duration,
+      isRecording: false,
+      isPlaying: false,
+      selectionStart: null,
+      selectionEnd: null,
+    };
+
+    const channel = prepareTrackPlayer(preparedTrack, player);
+    const updatedTrack: Track = { ...preparedTrack, channel };
+
+    tracksRef.current = tracksRef.current.map(t =>
+      t.id === trackId ? updatedTrack : t
+    );
+
+    setTracks(prev =>
+      prev.map(t => (t.id === trackId ? updatedTrack : t))
+    );
     toast({ title: 'Recording finished', description: `${track.name} updated.` });
-  }, [isRecording, recordingTrackId, toast]);
+  }, [isRecording, prepareTrackPlayer, recordingTrackId, toast]);
 
   const stopRecording = useCallback(async () => {
     if (recordingTrackId) {
@@ -631,16 +716,12 @@ export function useAudioEngine() {
     const duration = player.buffer.duration;
 
     const id = `track-${Date.now()}`;
-    const channel = new Tone.Channel(0, 0).toDestination();
-    player.connect(channel);
-    player.sync().start(0);
-
-    const newTrack: Track = {
+    const baseTrack: Track = {
       id,
       name: `Recording ${new Date().toLocaleTimeString()}`,
       url,
       player,
-      channel,
+      channel: new Tone.Channel(0, 0).toDestination(),
       effects: [],
       volume: 0,
       pan: 0,
@@ -654,9 +735,17 @@ export function useAudioEngine() {
       isLooping: false,
       playheadPosition: 0,
     };
+    const channel = prepareTrackPlayer(baseTrack, player);
+    const newTrack: Track = { ...baseTrack, channel };
     setTracks(prev => [...prev, newTrack]);
     toast({ title: 'Recording finished', description: 'New track added.' });
-  }, [isRecording, recordingTrackId, stopTrackRecording, toast]);
+  }, [
+    isRecording,
+    prepareTrackPlayer,
+    recordingTrackId,
+    stopTrackRecording,
+    toast,
+  ]);
 
   const startTrackRecording = useCallback(async (trackId: string) => {
     if (isRecording && recordingTrackId && recordingTrackId !== trackId) {
@@ -695,6 +784,62 @@ export function useAudioEngine() {
     }
   }, [isRecording, recordingTrackId, startTrackRecording, stopTrackRecording]);
 
+  const stopTrackPlayback = useCallback(
+    (trackId: string) => {
+      const track = tracksRef.current.find(t => t.id === trackId);
+      if (!track?.player) {
+        return;
+      }
+
+      const { start, end } = getTrackSelectionBounds(track);
+      track.player.onstop = () => {};
+      track.player.stop();
+      playbackStateRef.current.delete(trackId);
+      const syncTarget: Track = {
+        ...track,
+        player: track.player,
+        playheadPosition: start,
+      };
+      configureLoopForTrack(syncTarget, start, end);
+      resyncPlayerToMaster(syncTarget);
+      track.player.seek(start);
+      setTracks(prev =>
+        prev.map(t =>
+          t.id === trackId ? { ...t, isPlaying: false, playheadPosition: start } : t
+        )
+      );
+    },
+    [configureLoopForTrack, getTrackSelectionBounds, resyncPlayerToMaster]
+  );
+
+  const rewindTrack = useCallback(
+    (trackId: string) => {
+      const track = tracksRef.current.find(t => t.id === trackId);
+      if (!track?.player) {
+        return;
+      }
+
+      const { start, end } = getTrackSelectionBounds(track);
+      track.player.onstop = () => {};
+      track.player.stop();
+      playbackStateRef.current.delete(trackId);
+      const syncTarget: Track = {
+        ...track,
+        player: track.player,
+        playheadPosition: start,
+      };
+      configureLoopForTrack(syncTarget, start, end);
+      resyncPlayerToMaster(syncTarget);
+      track.player.seek(start);
+      setTracks(prev =>
+        prev.map(t =>
+          t.id === trackId ? { ...t, isPlaying: false, playheadPosition: start } : t
+        )
+      );
+    },
+    [configureLoopForTrack, getTrackSelectionBounds, resyncPlayerToMaster]
+  );
+
   const toggleTrackPlayback = useCallback(
     async (trackId: string) => {
       const track = tracksRef.current.find(t => t.id === trackId);
@@ -710,30 +855,21 @@ export function useAudioEngine() {
       const { start, end, duration } = getTrackSelectionBounds(track);
 
       if (track.player.state === 'started') {
-        track.player.onstop = () => {};
-        track.player.stop();
-        playbackStateRef.current.delete(trackId);
-        track.player.seek(start);
-        setTracks(prev =>
-          prev.map(t =>
-            t.id === trackId
-              ? { ...t, isPlaying: false, playheadPosition: start }
-              : t.isPlaying
-              ? { ...t, isPlaying: false }
-              : t
-          )
-        );
+        stopTrackPlayback(trackId);
         return;
       }
 
+      const trackSnapshot: Track = { ...track, player: track.player };
+      unsyncPlayerFromMaster(trackSnapshot);
+
       track.player.stop();
       track.player.seek(start);
-      const { loopEnd } = configureLoopForTrack(track, start, end);
+      const { loopEnd } = configureLoopForTrack(trackSnapshot, start, end);
 
       track.player.onstop = () => {
         playbackStateRef.current.delete(trackId);
         const latest = tracksRef.current.find(t => t.id === trackId);
-        const startPosition = latest ? getTrackSelectionBounds(latest).start : 0;
+        const startPosition = latest ? getTrackSelectionBounds(latest).start : start;
         setTracks(prev =>
           prev.map(t =>
             t.id === trackId
@@ -741,13 +877,17 @@ export function useAudioEngine() {
               : t
           )
         );
+
+        const resyncSource = latest ?? { ...trackSnapshot, playheadPosition: startPosition };
+        if (resyncSource.player) {
+          resyncPlayerToMaster(resyncSource);
+        }
+
         if (track.player) {
           track.player.onstop = () => {};
         }
       };
 
-      // Store the Tone.now() offset used by requestAnimationFrame to drive the
-      // UI playhead while the Player runs inside the AudioContext timeline.
       playbackStateRef.current.set(trackId, {
         startTime: Tone.now(),
         offset: start,
@@ -764,55 +904,15 @@ export function useAudioEngine() {
         })
       );
 
-      // Tone.Player start signature: (time, offset, duration). By syncing the
-      // offset with the selection bounds we support partial playback without
-      // re-slicing the buffer.
       track.player.start(undefined, start, duration);
     },
-    [configureLoopForTrack, getTrackSelectionBounds]
-  );
-
-  const stopTrackPlayback = useCallback(
-    (trackId: string) => {
-      const track = tracksRef.current.find(t => t.id === trackId);
-      if (!track?.player) {
-        return;
-      }
-
-      const { start } = getTrackSelectionBounds(track);
-      track.player.onstop = () => {};
-      track.player.stop();
-      playbackStateRef.current.delete(trackId);
-      track.player.seek(start);
-      setTracks(prev =>
-        prev.map(t =>
-          t.id === trackId ? { ...t, isPlaying: false, playheadPosition: start } : t
-        )
-      );
-    },
-    [getTrackSelectionBounds]
-  );
-
-  const rewindTrack = useCallback(
-    (trackId: string) => {
-      const track = tracksRef.current.find(t => t.id === trackId);
-      if (!track?.player) {
-        return;
-      }
-
-      const { start, end } = getTrackSelectionBounds(track);
-      track.player.onstop = () => {};
-      track.player.stop();
-      playbackStateRef.current.delete(trackId);
-      track.player.seek(start);
-      configureLoopForTrack(track, start, end);
-      setTracks(prev =>
-        prev.map(t =>
-          t.id === trackId ? { ...t, isPlaying: false, playheadPosition: start } : t
-        )
-      );
-    },
-    [configureLoopForTrack, getTrackSelectionBounds]
+    [
+      configureLoopForTrack,
+      getTrackSelectionBounds,
+      resyncPlayerToMaster,
+      stopTrackPlayback,
+      unsyncPlayerFromMaster,
+    ]
   );
 
   const toggleTrackLoop = useCallback(
@@ -953,7 +1053,20 @@ export function useAudioEngine() {
             URL.revokeObjectURL(track.url);
         }
         
-        newPlayer.sync().start(0);
+        const preparedTrack: Track = {
+            ...track,
+            player: newPlayer,
+            url: newUrl,
+            duration: newDuration,
+            selectionStart: null,
+            selectionEnd: null,
+            playheadPosition: 0,
+        };
+        const channel = prepareTrackPlayer(preparedTrack, newPlayer);
+        const finalTrack: Track = { ...preparedTrack, channel };
+        tracksRef.current = tracksRef.current.map(t =>
+            t.id === trackId ? finalTrack : t
+        );
         updateTrack(trackId, {
             player: newPlayer,
             url: newUrl,
@@ -969,7 +1082,7 @@ export function useAudioEngine() {
         console.error(e);
         toast({ title: 'Trim failed', description: 'An unexpected error occurred.', variant: 'destructive' });
     }
-}, [updateTrack, toast]);
+}, [prepareTrackPlayer, updateTrack, toast]);
 
   /**
    * Render the current session into a WAV mixdown.

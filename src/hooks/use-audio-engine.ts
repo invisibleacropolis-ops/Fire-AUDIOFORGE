@@ -261,28 +261,51 @@ export function useAudioEngine() {
     }
   }, [toast]);
   
-  const togglePlayback = useCallback(async () => {
+  const ensureContextRunning = useCallback(async () => {
     const context = Tone.getContext();
     if (context.state !== 'running') {
       await Tone.start();
     }
+  }, []);
+
+  const resetPlayersToStart = useCallback(() => {
+    tracksRef.current.forEach(track => {
+      if (track.player?.loaded) {
+        track.player.seek(0);
+      }
+    });
+    setTracks(prev => prev.map(track => ({ ...track, isPlaying: false })));
+  }, [setTracks]);
+
+  const playFromStart = useCallback(async () => {
+    await ensureContextRunning();
+    Tone.Transport.stop();
+    Tone.Transport.position = 0;
+    resetPlayersToStart();
+    Tone.Transport.start();
+    setIsPlaying(true);
+  }, [ensureContextRunning, resetPlayersToStart]);
+
+  const pausePlayback = useCallback(() => {
     if (Tone.Transport.state === 'started') {
       Tone.Transport.pause();
       setIsPlaying(false);
-    } else {
-      Tone.Transport.start();
-      setIsPlaying(true);
     }
   }, []);
 
   const stopPlayback = useCallback(() => {
     Tone.Transport.stop();
+    Tone.Transport.position = 0;
+    resetPlayersToStart();
     setIsPlaying(false);
-  }, []);
+  }, [resetPlayersToStart]);
 
   const rewind = useCallback(() => {
+    Tone.Transport.pause();
     Tone.Transport.position = 0;
-  }, []);
+    resetPlayersToStart();
+    setIsPlaying(false);
+  }, [resetPlayersToStart]);
 
   const startRecording = useCallback(async () => {
     if (isRecording && recordingTrackId) {
@@ -488,7 +511,7 @@ export function useAudioEngine() {
       track.player.onstop = () => {
         setTracks(prev => prev.map(t => (t.id === trackId ? { ...t, isPlaying: false } : t)));
         if (track.player) {
-          track.player.onstop = null;
+          track.player.onstop = () => {};
         }
       };
       track.player.start(undefined, start, duration);
@@ -642,8 +665,14 @@ export function useAudioEngine() {
 
         await Tone.loaded();
       }, duration);
-  
-      const wavBlob = bufferToWave(offlineBuffer);
+
+      const renderedBuffer = offlineBuffer.get();
+
+      if (!renderedBuffer) {
+        throw new Error('Offline rendering returned an empty buffer.');
+      }
+
+      const wavBlob = bufferToWave(renderedBuffer);
       const downloadUrl = URL.createObjectURL(wavBlob);
       const anchor = document.createElement('a');
       anchor.download = 'AudioForge-Project.wav';
@@ -711,7 +740,8 @@ export function useAudioEngine() {
     updateTrack,
     setTrackSelection,
     importAudio,
-    togglePlayback,
+    playFromStart,
+    pausePlayback,
     stopPlayback,
     rewind,
     startRecording,

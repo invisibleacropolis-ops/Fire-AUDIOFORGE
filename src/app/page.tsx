@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { Track } from '@/hooks/use-audio-engine';
 import { useAudioEngine } from '@/hooks/use-audio-engine';
 import { AppHeader } from '@/components/audio-forge/header';
-import { TransportControls } from '@/components/audio-forge/transport-controls';
+import { MasterTransportControls } from '@/components/audio-forge/transport-controls';
 import { TrackView } from '@/components/audio-forge/track-view';
 import { EffectsPanel } from '@/components/audio-forge/effects-panel';
 
@@ -14,13 +14,11 @@ export default function AudioForge() {
     isReady,
     tracks,
     addTrack,
-    togglePlayback,
+    playFromStart,
+    pausePlayback,
     stopPlayback,
     rewind,
     isPlaying,
-    isRecording,
-    startRecording,
-    stopRecording,
     updateTrack,
     setTrackSelection,
     exportProject,
@@ -64,14 +62,12 @@ export default function AudioForge() {
       <AppHeader onImport={handleFileImport} onExport={exportProject} />
       <main className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col">
-          <TransportControls
+          <MasterTransportControls
             isPlaying={isPlaying}
-            isRecording={isRecording}
-            onTogglePlayback={togglePlayback}
-            onStopPlayback={stopPlayback}
+            onPlay={playFromStart}
+            onPause={pausePlayback}
+            onStop={stopPlayback}
             onRewind={rewind}
-            onStartRecording={startRecording}
-            onStopRecording={stopRecording}
             onExport={exportProject}
           />
           <TrackView

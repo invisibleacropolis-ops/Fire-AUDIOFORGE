@@ -57,6 +57,9 @@ export type Track = {
   selectionEnd: number | null;
   isLooping: boolean;
   playheadPosition: number;
+  audioBuffer: AudioBuffer | null;
+  warmPlayers: Tone.Player[];
+  isBuffering: boolean;
 };
 
 type PlaybackState = {
@@ -65,6 +68,38 @@ type PlaybackState = {
   loopStart: number;
   loopEnd: number | null;
 };
+
+const WARM_PLAYER_POOL_SIZE = 3;
+
+function createPlayerFromAudioBuffer(audioBuffer: AudioBuffer): Tone.Player {
+  const player = new Tone.Player();
+  player.buffer.set(audioBuffer);
+  // Short fades reduce the chance of pops when retriggering buffers rapidly.
+  player.fadeIn = 0.01;
+  player.fadeOut = 0.01;
+  return player;
+}
+
+function createWarmPlayerPool(
+  audioBuffer: AudioBuffer,
+  size: number = WARM_PLAYER_POOL_SIZE
+): Tone.Player[] {
+  const players: Tone.Player[] = [];
+  for (let index = 0; index < size; index += 1) {
+    players.push(createPlayerFromAudioBuffer(audioBuffer));
+  }
+  return players;
+}
+
+function disposePlayerPool(pool: Tone.Player[]) {
+  pool.forEach(player => {
+    try {
+      player.dispose();
+    } catch (error) {
+      console.warn('Failed to dispose warm player instance', error);
+    }
+  });
+}
 
 /**
  * Build a Tone.js node for the provided effect definition.
@@ -349,6 +384,7 @@ export function useAudioEngine() {
   const tracksRef = useRef<Track[]>([]);
   const recorderRef = useRef<Tone.Recorder | null>(null);
   const userMediaRef = useRef<Tone.UserMedia | null>(null);
+  const bufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
   // playbackStateRef keeps a lightweight clock for every playing track so we
   // can translate Tone.now() deltas into UI playhead positions without
   // repeatedly polling Tone.Player for state.
@@ -378,6 +414,7 @@ export function useAudioEngine() {
       // Player, Channel, effect nodes, and any object URLs for imported audio.
       tracksRef.current.forEach(t => {
         t.player?.dispose();
+        disposePlayerPool(t.warmPlayers);
         t.channel?.dispose();
         t.effects.forEach(e => e.node?.dispose());
         if (t.url) {
@@ -413,6 +450,9 @@ export function useAudioEngine() {
       selectionEnd: null,
       isLooping: false,
       playheadPosition: 0,
+      audioBuffer: null,
+      warmPlayers: [],
+      isBuffering: false,
     };
     setTracks(prev => [...prev, newTrack]);
     return id;
@@ -652,10 +692,69 @@ export function useAudioEngine() {
     [configureLoopForTrack, getTrackSelectionBounds]
   );
 
+  const decodeFileToAudioBuffer = useCallback(async (file: File) => {
+    const cacheKey = `${file.name}:${file.lastModified}:${file.size}`;
+    const cachedBuffer = bufferCacheRef.current.get(cacheKey);
+    if (cachedBuffer) {
+      return cachedBuffer;
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const context = Tone.getContext();
+    if (context.state !== 'running') {
+      await Tone.start();
+    }
+    const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+      context.rawContext.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+    });
+    bufferCacheRef.current.set(cacheKey, audioBuffer);
+    return audioBuffer;
+  }, []);
+
+  const decodeBlobToAudioBuffer = useCallback(async (blob: Blob) => {
+    const arrayBuffer = await blob.arrayBuffer();
+    const context = Tone.getContext();
+    if (context.state !== 'running') {
+      await Tone.start();
+    }
+    return new Promise<AudioBuffer>((resolve, reject) => {
+      context.rawContext.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+    });
+  }, []);
+
+  const allocateWarmPlayer = useCallback(
+    (track: Track): { player: Tone.Player; pool: Tone.Player[] } | null => {
+      if (!track.audioBuffer) {
+        return null;
+      }
+
+      const pool = [...track.warmPlayers];
+      const nextPlayer = pool.shift() ?? createPlayerFromAudioBuffer(track.audioBuffer);
+
+      while (pool.length < WARM_PLAYER_POOL_SIZE) {
+        pool.push(createPlayerFromAudioBuffer(track.audioBuffer));
+      }
+
+      return { player: nextPlayer, pool };
+    },
+    []
+  );
+
+  const updateTrackBufferingState = useCallback((trackId: string, isBuffering: boolean) => {
+    tracksRef.current = tracksRef.current.map(track =>
+      track.id === trackId ? { ...track, isBuffering } : track
+    );
+    setTracks(prev =>
+      prev.map(track => (track.id === trackId ? { ...track, isBuffering } : track))
+    );
+  }, []);
+
   /**
    * Load an audio file into an existing track. The previous player/url
    * resources are disposed to avoid leaking Tone.js nodes or blob URLs so
-   * that repeated imports stay stable for long-lived sessions.
+   * that repeated imports stay stable for long-lived sessions. Audio data is
+   * decoded manually so we can reuse buffers across the app without
+   * re-decoding on every action.
    */
   const importAudioToTrack = useCallback(
     async (trackId: string, file: File): Promise<boolean> => {
@@ -670,17 +769,21 @@ export function useAudioEngine() {
         return false;
       }
 
+      updateTrackBufferingState(trackId, true);
+
       let url: string | null = null;
       let player: Tone.Player | null = null;
+      let warmPlayers: Tone.Player[] = [];
       let shouldDispose = true;
 
       try {
+        const audioBuffer = await decodeFileToAudioBuffer(file);
         url = URL.createObjectURL(file);
-        const playerInstance = new Tone.Player();
-        await playerInstance.load(url);
-        player = playerInstance;
-        const duration = playerInstance.buffer.duration;
+        player = createPlayerFromAudioBuffer(audioBuffer);
+        warmPlayers = createWarmPlayerPool(audioBuffer);
+        const duration = audioBuffer.duration;
 
+        disposePlayerPool(targetTrack.warmPlayers);
         if (targetTrack.player) {
           targetTrack.player.dispose();
         }
@@ -692,7 +795,7 @@ export function useAudioEngine() {
           ...targetTrack,
           name: file.name.split('.').slice(0, -1).join('.') || file.name,
           url,
-          player: playerInstance,
+          player,
           channel: targetTrack.channel ?? new Tone.Channel(0, 0).toDestination(),
           duration,
           isPlaying: false,
@@ -700,9 +803,12 @@ export function useAudioEngine() {
           selectionStart: null,
           selectionEnd: null,
           playheadPosition: 0,
+          audioBuffer,
+          warmPlayers,
+          isBuffering: false,
         };
 
-        const channel = prepareTrackPlayer(baseTrack, playerInstance);
+        const channel = prepareTrackPlayer(baseTrack, player);
         const updatedTrack: Track = { ...baseTrack, channel };
 
         tracksRef.current = tracksRef.current.map(track =>
@@ -715,6 +821,7 @@ export function useAudioEngine() {
         shouldDispose = false;
         player = null;
         url = null;
+        warmPlayers = [];
         return true;
       } catch (error) {
         console.error(error);
@@ -727,13 +834,21 @@ export function useAudioEngine() {
       } finally {
         if (shouldDispose) {
           player?.dispose();
+          disposePlayerPool(warmPlayers);
           if (url) {
             URL.revokeObjectURL(url);
           }
         }
+
+        updateTrackBufferingState(trackId, false);
       }
     },
-    [prepareTrackPlayer, toast]
+    [
+      decodeFileToAudioBuffer,
+      prepareTrackPlayer,
+      toast,
+      updateTrackBufferingState,
+    ]
   );
   
   const ensureContextRunning = useCallback(async () => {
@@ -908,6 +1023,8 @@ export function useAudioEngine() {
 
   const stopTrackRecording = useCallback(async (trackId: string) => {
     if (!recorderRef.current || !isRecording || recordingTrackId !== trackId) return;
+
+    updateTrackBufferingState(trackId, true);
     // Recorder.stop() resolves with a Blob containing the captured PCM data.
     const recording = await recorderRef.current.stop();
     setIsRecording(false);
@@ -916,43 +1033,74 @@ export function useAudioEngine() {
     const track = tracksRef.current.find(t => t.id === trackId);
     if (!track) {
       toast({ title: 'Recording failed', description: 'Track no longer exists.', variant: 'destructive' });
+      updateTrackBufferingState(trackId, false);
       return;
     }
 
-    const url = URL.createObjectURL(recording);
-    const player = new Tone.Player();
-    await player.load(url);
-    const duration = player.buffer.duration;
+    let url: string | null = null;
+    let player: Tone.Player | null = null;
+    let warmPlayers: Tone.Player[] = [];
 
-    track.player?.dispose();
-    if (track.url) {
-      URL.revokeObjectURL(track.url);
+    try {
+      const audioBuffer = await decodeBlobToAudioBuffer(recording);
+      url = URL.createObjectURL(recording);
+      player = createPlayerFromAudioBuffer(audioBuffer);
+      warmPlayers = createWarmPlayerPool(audioBuffer);
+      const duration = audioBuffer.duration;
+
+      track.player?.dispose();
+      disposePlayerPool(track.warmPlayers);
+      if (track.url) {
+        URL.revokeObjectURL(track.url);
+      }
+
+      const preparedTrack: Track = {
+        ...track,
+        url,
+        player,
+        channel: track.channel ?? new Tone.Channel(0, 0).toDestination(),
+        duration,
+        isRecording: false,
+        isPlaying: false,
+        selectionStart: null,
+        selectionEnd: null,
+        playheadPosition: 0,
+        audioBuffer,
+        warmPlayers,
+        isBuffering: false,
+      };
+
+      const channel = prepareTrackPlayer(preparedTrack, player);
+      const updatedTrack: Track = { ...preparedTrack, channel };
+
+      tracksRef.current = tracksRef.current.map(t =>
+        t.id === trackId ? updatedTrack : t
+      );
+
+      setTracks(prev =>
+        prev.map(t => (t.id === trackId ? updatedTrack : t))
+      );
+      toast({ title: 'Recording finished', description: `${track.name} updated.` });
+    } catch (error) {
+      console.error(error);
+      toast({ title: 'Recording failed', description: 'Unable to process the recorded audio.', variant: 'destructive' });
+      if (url) {
+        URL.revokeObjectURL(url);
+        url = null;
+      }
+      player?.dispose();
+      disposePlayerPool(warmPlayers);
+    } finally {
+      updateTrackBufferingState(trackId, false);
     }
-
-    const preparedTrack: Track = {
-      ...track,
-      url,
-      player,
-      channel: track.channel ?? new Tone.Channel(0, 0).toDestination(),
-      duration,
-      isRecording: false,
-      isPlaying: false,
-      selectionStart: null,
-      selectionEnd: null,
-    };
-
-    const channel = prepareTrackPlayer(preparedTrack, player);
-    const updatedTrack: Track = { ...preparedTrack, channel };
-
-    tracksRef.current = tracksRef.current.map(t =>
-      t.id === trackId ? updatedTrack : t
-    );
-
-    setTracks(prev =>
-      prev.map(t => (t.id === trackId ? updatedTrack : t))
-    );
-    toast({ title: 'Recording finished', description: `${track.name} updated.` });
-  }, [isRecording, prepareTrackPlayer, recordingTrackId, toast]);
+  }, [
+    decodeBlobToAudioBuffer,
+    isRecording,
+    prepareTrackPlayer,
+    recordingTrackId,
+    toast,
+    updateTrackBufferingState,
+  ]);
 
   const stopRecording = useCallback(async () => {
     if (recordingTrackId) {
@@ -966,36 +1114,55 @@ export function useAudioEngine() {
     const recording = await recorderRef.current.stop();
     setIsRecording(false);
 
-    const url = URL.createObjectURL(recording);
-    const player = new Tone.Player();
-    await player.load(url);
-    const duration = player.buffer.duration;
+    let url: string | null = null;
+    let player: Tone.Player | null = null;
+    let warmPlayers: Tone.Player[] = [];
 
-    const id = `track-${Date.now()}`;
-    const baseTrack: Track = {
-      id,
-      name: `Recording ${new Date().toLocaleTimeString()}`,
-      url,
-      player,
-      channel: new Tone.Channel(0, 0).toDestination(),
-      effects: [],
-      volume: 0,
-      pan: 0,
-      isMuted: false,
-      isSoloed: false,
-      duration,
-      isPlaying: false,
-      isRecording: false,
-      selectionStart: null,
-      selectionEnd: null,
-      isLooping: false,
-      playheadPosition: 0,
-    };
-    const channel = prepareTrackPlayer(baseTrack, player);
-    const newTrack: Track = { ...baseTrack, channel };
-    setTracks(prev => [...prev, newTrack]);
-    toast({ title: 'Recording finished', description: 'New track added.' });
+    try {
+      const audioBuffer = await decodeBlobToAudioBuffer(recording);
+      url = URL.createObjectURL(recording);
+      player = createPlayerFromAudioBuffer(audioBuffer);
+      warmPlayers = createWarmPlayerPool(audioBuffer);
+      const duration = audioBuffer.duration;
+
+      const id = `track-${Date.now()}`;
+      const baseTrack: Track = {
+        id,
+        name: `Recording ${new Date().toLocaleTimeString()}`,
+        url,
+        player,
+        channel: new Tone.Channel(0, 0).toDestination(),
+        effects: [],
+        volume: 0,
+        pan: 0,
+        isMuted: false,
+        isSoloed: false,
+        duration,
+        isPlaying: false,
+        isRecording: false,
+        selectionStart: null,
+        selectionEnd: null,
+        isLooping: false,
+        playheadPosition: 0,
+        audioBuffer,
+        warmPlayers,
+        isBuffering: false,
+      };
+      const channel = prepareTrackPlayer(baseTrack, player);
+      const newTrack: Track = { ...baseTrack, channel };
+      setTracks(prev => [...prev, newTrack]);
+      toast({ title: 'Recording finished', description: 'New track added.' });
+    } catch (error) {
+      console.error(error);
+      toast({ title: 'Recording failed', description: 'Unable to process the recorded audio.', variant: 'destructive' });
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+      player?.dispose();
+      disposePlayerPool(warmPlayers);
+    }
   }, [
+    decodeBlobToAudioBuffer,
     isRecording,
     prepareTrackPlayer,
     recordingTrackId,
@@ -1118,32 +1285,39 @@ export function useAudioEngine() {
       const trackSnapshot: Track = { ...track, player: track.player };
       unsyncPlayerFromMaster(trackSnapshot);
 
-      track.player.onstop = () => {};
-      track.player.stop();
-      track.player.seek(start);
+      const resetPlayer = (playerInstance: Tone.Player) => {
+        playerInstance.onstop = () => {};
+        playerInstance.stop();
+        playerInstance.seek(start);
+      };
+
+      resetPlayer(track.player);
       const { loopEnd, shouldLoop } = configureLoopForTrack(trackSnapshot, start, end);
 
-      track.player.onstop = () => {
-        playbackStateRef.current.delete(trackId);
-        const latest = tracksRef.current.find(t => t.id === trackId);
-        const startPosition = latest ? getTrackSelectionBounds(latest).start : start;
-        setTracks(prev =>
-          prev.map(t =>
-            t.id === trackId
-              ? { ...t, isPlaying: false, playheadPosition: startPosition }
-              : t
-          )
-        );
+      const assignOnStop = (playerInstance: Tone.Player) => {
+        playerInstance.onstop = () => {
+          playbackStateRef.current.delete(trackId);
+          const latest = tracksRef.current.find(t => t.id === trackId);
+          const startPosition = latest ? getTrackSelectionBounds(latest).start : start;
+          setTracks(prev =>
+            prev.map(t =>
+              t.id === trackId
+                ? { ...t, isPlaying: false, playheadPosition: startPosition }
+                : t
+            )
+          );
 
-        const resyncSource = latest ?? { ...trackSnapshot, playheadPosition: startPosition };
-        if (resyncSource.player) {
-          resyncPlayerToMaster(resyncSource);
-        }
+          const resyncSource =
+            latest ?? { ...trackSnapshot, player: playerInstance, playheadPosition: startPosition };
+          if (resyncSource.player) {
+            resyncPlayerToMaster(resyncSource);
+          }
 
-        if (track.player) {
-          track.player.onstop = () => {};
-        }
+          playerInstance.onstop = () => {};
+        };
       };
+
+      assignOnStop(track.player);
 
       playbackStateRef.current.set(trackId, {
         startTime: Tone.now(),
@@ -1161,17 +1335,91 @@ export function useAudioEngine() {
         })
       );
 
-      if (shouldLoop || duration === undefined) {
-        track.player.start(undefined, start);
-      } else {
-        track.player.start(undefined, start, duration);
+      const startWithPlayer = (playerInstance: Tone.Player) => {
+        if (shouldLoop || duration === undefined) {
+          playerInstance.start(undefined, start);
+        } else {
+          playerInstance.start(undefined, start, duration);
+        }
+      };
+
+      try {
+        startWithPlayer(track.player);
+      } catch (error) {
+        console.error('Failed to start player, attempting warm instance swap.', error);
+        const latest = tracksRef.current.find(t => t.id === trackId) ?? trackSnapshot;
+        const allocation = allocateWarmPlayer(latest);
+
+        if (!allocation) {
+          playbackStateRef.current.delete(trackId);
+          setTracks(prev =>
+            prev.map(t =>
+              t.id === trackId ? { ...t, isPlaying: false } : t.isPlaying ? { ...t, isPlaying: false } : t
+            )
+          );
+          toast({
+            title: 'Playback error',
+            description: 'Audio failed to start. Try re-importing the file.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const { player: replacement, pool } = allocation;
+        latest.player?.dispose();
+
+        const baseTrack: Track = {
+          ...latest,
+          player: replacement,
+          warmPlayers: pool,
+          playheadPosition: start,
+          isPlaying: true,
+        };
+
+        const channel = prepareTrackPlayer(baseTrack, replacement);
+        const refreshedTrack: Track = { ...baseTrack, channel };
+        configureLoopForTrack(refreshedTrack, start, end);
+        assignOnStop(replacement);
+
+        tracksRef.current = tracksRef.current.map(t =>
+          t.id === trackId ? refreshedTrack : t
+        );
+
+        setTracks(prev =>
+          prev.map(t => {
+            if (t.id === trackId) {
+              return { ...refreshedTrack, playheadPosition: start, isPlaying: true };
+            }
+            return t.isPlaying ? { ...t, isPlaying: false } : t;
+          })
+        );
+
+        try {
+          startWithPlayer(replacement);
+        } catch (fallbackError) {
+          console.error('Fallback player failed to start.', fallbackError);
+          playbackStateRef.current.delete(trackId);
+          setTracks(prev =>
+            prev.map(t =>
+              t.id === trackId ? { ...t, isPlaying: false } : t
+            )
+          );
+          toast({
+            title: 'Playback error',
+            description: 'Unable to start playback for this track.',
+            variant: 'destructive',
+          });
+        }
       }
     },
     [
+      allocateWarmPlayer,
       configureLoopForTrack,
       getTrackSelectionBounds,
+      prepareTrackPlayer,
       resyncPlayerToMaster,
       stopTrackPlayback,
+      toast,
       unsyncPlayerFromMaster,
     ]
   );
@@ -1282,9 +1530,14 @@ export function useAudioEngine() {
         return;
     }
 
+    updateTrackBufferingState(trackId, true);
+
     try {
-        const audioBuffer = track.player.buffer.get();
-        if(!audioBuffer) return;
+        const audioBuffer = track.audioBuffer ?? track.player.buffer.get();
+        if(!audioBuffer) {
+          toast({ title: 'Trim failed', description: 'Unable to access audio data.', variant: 'destructive' });
+          return;
+        }
 
         const startSample = Math.floor(startTime * audioBuffer.sampleRate);
         const endSample = Math.floor(endTime * audioBuffer.sampleRate);
@@ -1304,16 +1557,17 @@ export function useAudioEngine() {
         
         const wavBlob = bufferToWave(newAudioBuffer);
         const newUrl = URL.createObjectURL(wavBlob);
-        
-        const newPlayer = new Tone.Player();
-        await newPlayer.load(newUrl);
-        const newDuration = newPlayer.buffer.duration;
+
+        const newPlayer = createPlayerFromAudioBuffer(newAudioBuffer);
+        const warmPlayers = createWarmPlayerPool(newAudioBuffer);
+        const newDuration = newAudioBuffer.duration;
 
         track.player.dispose();
+        disposePlayerPool(track.warmPlayers);
         if (track.url) {
             URL.revokeObjectURL(track.url);
         }
-        
+
         const preparedTrack: Track = {
             ...track,
             player: newPlayer,
@@ -1322,6 +1576,8 @@ export function useAudioEngine() {
             selectionStart: null,
             selectionEnd: null,
             playheadPosition: 0,
+            audioBuffer: newAudioBuffer,
+            warmPlayers,
         };
         const channel = prepareTrackPlayer(preparedTrack, newPlayer);
         const finalTrack: Track = { ...preparedTrack, channel };
@@ -1335,6 +1591,8 @@ export function useAudioEngine() {
             selectionStart: null,
             selectionEnd: null,
             playheadPosition: 0,
+            audioBuffer: newAudioBuffer,
+            warmPlayers,
         });
         playbackStateRef.current.delete(trackId);
 
@@ -1342,8 +1600,10 @@ export function useAudioEngine() {
     } catch(e) {
         console.error(e);
         toast({ title: 'Trim failed', description: 'An unexpected error occurred.', variant: 'destructive' });
+    } finally {
+        updateTrackBufferingState(trackId, false);
     }
-}, [prepareTrackPlayer, updateTrack, toast]);
+}, [prepareTrackPlayer, updateTrack, toast, updateTrackBufferingState]);
 
   /**
    * Render the current session into a WAV mixdown.
@@ -1353,7 +1613,7 @@ export function useAudioEngine() {
    * buffer is converted to a Blob which we immediately trigger as a download.
    */
   const exportProject = useCallback(async () => {
-    if (tracks.filter(t => t.url).length === 0) {
+    if (tracks.filter(t => t.url || t.audioBuffer).length === 0) {
       toast({ title: 'Cannot export empty project', variant: 'destructive' });
       return;
     }
@@ -1363,7 +1623,7 @@ export function useAudioEngine() {
     try {
         const hasSolo = tracksRef.current.some(t => t.isSoloed);
         const preparedTracks = tracksRef.current.filter(
-          t => t.player && t.player.loaded && t.url
+          t => t.player && t.player.loaded && (t.audioBuffer || t.url)
         );
 
         const validTracks = preparedTracks.filter(t =>
@@ -1398,7 +1658,9 @@ export function useAudioEngine() {
             .map(instantiateEffectNode)
             .filter((node): node is EffectNode => node !== null);
 
-          const player = new Tone.Player(track.url!);
+          const player = track.audioBuffer
+            ? createPlayerFromAudioBuffer(track.audioBuffer)
+            : new Tone.Player(track.url!);
 
           if (effectNodes.length > 0) {
             player.chain(...effectNodes, channel);

@@ -114,194 +114,210 @@ export function Track({
         isSelected ? 'border-primary shadow-lg shadow-primary/20' : 'border-border'
       )}
     >
-      <CardContent className="p-3 flex gap-4 items-start">
-        <TooltipProvider>
-          <div className="w-48 flex-shrink-0 space-y-3">
-            <Input
-              value={track.name}
-              onChange={handleNameChange}
-              className="h-8 text-sm font-semibold"
-              onClick={(e) => e.stopPropagation()}
-            />
-            {/* Button cluster proxies transport commands back to the engine. */}
-            <div className="flex items-center justify-between gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    aria-label="Import audio"
-                    onClick={handleImportClick}
-                  >
-                    <Upload className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Import Audio</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    aria-label="Rewind track"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRewind(track.id);
-                    }}
-                    disabled={!track.player}
-                  >
-                    <Rewind className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Rewind</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="primary"
-                    size="icon"
-                    aria-label={track.isPlaying ? 'Pause track' : 'Play track'}
-                    className="h-9 w-9"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onPlayPause(track.id);
-                    }}
-                    disabled={!track.player}
-                  >
-                    {track.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{track.isPlaying ? 'Pause' : 'Play'}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    aria-label="Stop track"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStop(track.id);
-                    }}
-                    disabled={!track.player}
-                  >
-                    <StopCircle className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Stop</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={track.isLooping ? 'secondary' : 'outline'}
-                    size="icon"
-                    aria-label={track.isLooping ? 'Disable loop' : 'Enable loop'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleLoop(track.id);
-                    }}
-                    disabled={!track.player}
-                    className={cn(track.isLooping && 'bg-green-500 text-black hover:bg-green-600')}
-                  >
-                    <Repeat className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{track.isLooping ? 'Loop Enabled' : 'Loop Selection'}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={track.isRecording ? 'destructive' : 'outline'}
-                    size="icon"
-                    aria-label={track.isRecording ? 'Stop recording track' : 'Record track'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRecord(track.id);
-                    }}
-                  >
-                    {track.isRecording ? (
-                      <Disc3 className="h-4 w-4 animate-pulse" />
-                    ) : (
-                      <Mic className="h-4 w-4" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{track.isRecording ? 'Stop Recording' : 'Record'}</TooltipContent>
-              </Tooltip>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="audio/*"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            {/* Muting/Soloing updates channel gain routing through onUpdate. */}
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant={track.isMuted ? 'destructive' : 'outline'}
-                onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
-                className="w-1/2"
-              >
-                M
-              </Button>
-              <Button
-                size="sm"
-                variant={track.isSoloed ? 'secondary' : 'outline'}
-                className={cn("w-1/2", track.isSoloed && "bg-yellow-500 text-black hover:bg-yellow-600")}
-                onClick={(e) => { e.stopPropagation(); handleSoloToggle(); }}
-              >
-                S
-              </Button>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Volume</Label>
-              <Slider
-                value={[track.volume]}
-                onValueChange={handleVolumeChange}
-                max={6}
-                min={-60}
-                step={1}
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Pan</Label>
-              <Slider
-                value={[track.pan]}
-                onValueChange={handlePanChange}
-                max={1}
-                min={-1}
-                step={0.01}
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-            <div className="space-y-1 pt-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full"
-                disabled={!selection}
-                onClick={handleTrim}
-              >
-                <Scissors />
-                Trim to Selection
-              </Button>
-            </div>
+      <CardContent className="relative p-3">
+        {track.isBuffering && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-md bg-background/80">
+            <Disc3 className="mr-2 h-5 w-5 animate-spin" />
+            <span className="text-sm font-medium">Processing audio…</span>
           </div>
-        </TooltipProvider>
-        <div className="flex-1">
-          {/* Waveform surfaces selection changes so the engine can configure the
-              Player loop and transport bounds. */}
-          <Waveform
-            trackId={track.id}
-            url={track.url}
-            duration={track.duration}
-            selection={selection}
-            playhead={track.playheadPosition}
-            onSelectionChange={onSelectionChange}
-          />
+        )}
+        <div
+          className={cn(
+            'flex gap-4 items-start',
+            track.isBuffering && 'pointer-events-none opacity-60'
+          )}
+        >
+          <TooltipProvider>
+            <div className="w-48 flex-shrink-0 space-y-3">
+              <Input
+                value={track.name}
+                onChange={handleNameChange}
+                className="h-8 text-sm font-semibold"
+                onClick={(e) => e.stopPropagation()}
+              />
+              {/* Button cluster proxies transport commands back to the engine. */}
+              <div className="flex items-center justify-between gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="Import audio"
+                      onClick={handleImportClick}
+                      disabled={track.isBuffering}
+                    >
+                      <Upload className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Import Audio</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="Rewind track"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRewind(track.id);
+                      }}
+                      disabled={!track.player || track.isBuffering}
+                    >
+                      <Rewind className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Rewind</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="primary"
+                      size="icon"
+                      aria-label={track.isPlaying ? 'Pause track' : 'Play track'}
+                      className="h-9 w-9"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlayPause(track.id);
+                      }}
+                      disabled={!track.player || track.isBuffering}
+                    >
+                      {track.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{track.isPlaying ? 'Pause' : 'Play'}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="Stop track"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStop(track.id);
+                      }}
+                      disabled={!track.player || track.isBuffering}
+                    >
+                      <StopCircle className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Stop</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={track.isLooping ? 'secondary' : 'outline'}
+                      size="icon"
+                      aria-label={track.isLooping ? 'Disable loop' : 'Enable loop'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleLoop(track.id);
+                      }}
+                      disabled={!track.player || track.isBuffering}
+                      className={cn(track.isLooping && 'bg-green-500 text-black hover:bg-green-600')}
+                    >
+                      <Repeat className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{track.isLooping ? 'Loop Enabled' : 'Loop Selection'}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={track.isRecording ? 'destructive' : 'outline'}
+                      size="icon"
+                      aria-label={track.isRecording ? 'Stop recording track' : 'Record track'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRecord(track.id);
+                      }}
+                      disabled={track.isRecording || track.isBuffering}
+                    >
+                      {track.isRecording ? (
+                        <Disc3 className="h-4 w-4 animate-pulse" />
+                      ) : (
+                        <Mic className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{track.isRecording ? 'Stop Recording' : 'Record'}</TooltipContent>
+                </Tooltip>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={handleFileChange}
+                className="hidden"
+                disabled={track.isBuffering}
+              />
+              {/* Muting/Soloing updates channel gain routing through onUpdate. */}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={track.isMuted ? 'destructive' : 'outline'}
+                  onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
+                  className="w-1/2"
+                >
+                  M
+                </Button>
+                <Button
+                  size="sm"
+                  variant={track.isSoloed ? 'secondary' : 'outline'}
+                  className={cn('w-1/2', track.isSoloed && 'bg-yellow-500 text-black hover:bg-yellow-600')}
+                  onClick={(e) => { e.stopPropagation(); handleSoloToggle(); }}
+                >
+                  S
+                </Button>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Volume</Label>
+                <Slider
+                  value={[track.volume]}
+                  onValueChange={handleVolumeChange}
+                  max={6}
+                  min={-60}
+                  step={1}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Pan</Label>
+                <Slider
+                  value={[track.pan]}
+                  onValueChange={handlePanChange}
+                  max={1}
+                  min={-1}
+                  step={0.01}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+              <div className="space-y-1 pt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  disabled={!selection || track.isBuffering}
+                  onClick={handleTrim}
+                >
+                  <Scissors />
+                  Trim to Selection
+                </Button>
+              </div>
+            </div>
+          </TooltipProvider>
+          <div className="flex-1">
+            {/* Waveform surfaces selection changes so the engine can configure the
+                Player loop and transport bounds. */}
+            <Waveform
+              trackId={track.id}
+              url={track.url}
+              duration={track.duration}
+              selection={selection}
+              playhead={track.playheadPosition}
+              onSelectionChange={onSelectionChange}
+            />
+          </div>
         </div>
       </CardContent>
     </Card>

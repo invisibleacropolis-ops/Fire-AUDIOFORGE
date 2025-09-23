@@ -8,27 +8,28 @@ import { AppHeader } from '@/components/audio-forge/header';
 import { MasterTransportControls } from '@/components/audio-forge/transport-controls';
 import { TrackView } from '@/components/audio-forge/track-view';
 import { EffectsPanel } from '@/components/audio-forge/effects-panel';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 export default function AudioForge() {
   const {
     isReady,
     tracks,
     addTrack,
-    playFromStart,
-    pausePlayback,
-    stopPlayback,
-    rewind,
-    isPlaying,
     updateTrack,
     setTrackSelection,
-    exportProject,
-    importAudioToTrack,
     trimTrack,
     toggleTrackPlayback,
     stopTrackPlayback,
     rewindTrack,
     toggleTrackLoop,
     toggleTrackRecording,
+    importAudioToTrack,
+    playFromStart,
+    pausePlayback,
+    stopPlayback,
+    rewind,
+    isPlaying,
+    exportProject,
   } = useAudioEngine();
 
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -63,14 +64,16 @@ export default function AudioForge() {
       <AppHeader onExport={exportProject} />
       <main className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col">
-          <MasterTransportControls
-            isPlaying={isPlaying}
-            onPlay={playFromStart}
-            onPause={pausePlayback}
-            onStop={stopPlayback}
-            onRewind={rewind}
-            onExport={exportProject}
-          />
+          <TooltipProvider>
+            <MasterTransportControls
+              isPlaying={isPlaying}
+              onPlay={playFromStart}
+              onPause={pausePlayback}
+              onStop={stopPlayback}
+              onRewind={rewind}
+              onExport={exportProject}
+            />
+          </TooltipProvider>
           <TrackView
             tracks={tracks}
             onAddTrack={handleAddNewTrack}

@@ -177,6 +177,106 @@ function instantiateEffectNode(effect: Effect): EffectNode | null {
   return node;
 }
 
+function isEffectNodeOfType(effectType: EffectType, node: EffectNode): boolean {
+  switch (effectType) {
+    case 'reverb':
+      return node instanceof Tone.Reverb;
+    case 'delay':
+      return node instanceof Tone.FeedbackDelay;
+    case 'distortion':
+      return node instanceof Tone.Distortion;
+    case 'chorus':
+      return node instanceof Tone.Chorus;
+    case 'phaser':
+      return node instanceof Tone.Phaser;
+    case 'vibrato':
+      return node instanceof Tone.Vibrato;
+    case 'autoFilter':
+      return node instanceof Tone.AutoFilter;
+    case 'compressor':
+      return node instanceof Tone.Compressor;
+    case 'bitCrusher':
+      return node instanceof Tone.BitCrusher;
+    case 'pitchShift':
+      return node instanceof Tone.PitchShift;
+    default:
+      return false;
+  }
+}
+
+function updateEffectNodeParameters(effect: Effect, node: EffectNode) {
+  applyWetValue(node, effect.wet);
+
+  switch (effect.type) {
+    case 'reverb':
+      if (node instanceof Tone.Reverb) {
+        node.decay = effect.decay ?? 1.5;
+        node.preDelay = effect.preDelay ?? 0.01;
+      }
+      break;
+    case 'delay':
+      if (node instanceof Tone.FeedbackDelay) {
+        node.delayTime.value = effect.delayTime ?? 0.25;
+        node.feedback.value = effect.feedback ?? 0.5;
+      }
+      break;
+    case 'distortion':
+      if (node instanceof Tone.Distortion) {
+        node.distortion = effect.distortion ?? 0.4;
+      }
+      break;
+    case 'chorus':
+      if (node instanceof Tone.Chorus) {
+        node.frequency.value = effect.frequency ?? 1.5;
+        node.delayTime = effect.delayTime ?? 3.5;
+        node.depth = effect.depth ?? 0.7;
+      }
+      break;
+    case 'phaser':
+      if (node instanceof Tone.Phaser) {
+        node.frequency.value = effect.frequency ?? 0.5;
+        node.octaves = effect.octaves ?? 3;
+        node.baseFrequency = effect.baseFrequency ?? 350;
+      }
+      break;
+    case 'vibrato':
+      if (node instanceof Tone.Vibrato) {
+        node.frequency.value = effect.frequency ?? 5;
+        node.depth.value = effect.depth ?? 0.1;
+      }
+      break;
+    case 'autoFilter':
+      if (node instanceof Tone.AutoFilter) {
+        node.frequency.value = effect.frequency ?? 1.5;
+        node.depth.value = effect.depth ?? 0.5;
+        node.baseFrequency = effect.baseFrequency ?? 200;
+        node.octaves = effect.octaves ?? 2;
+      }
+      break;
+    case 'compressor':
+      if (node instanceof Tone.Compressor) {
+        node.threshold.value = effect.threshold ?? -24;
+        node.ratio.value = effect.ratio ?? 12;
+        node.attack.value = effect.attack ?? 0.003;
+        node.release.value = effect.release ?? 0.25;
+      }
+      break;
+    case 'bitCrusher':
+      if (node instanceof Tone.BitCrusher) {
+        node.bits.value = effect.bits ?? 4;
+      }
+      break;
+    case 'pitchShift':
+      if (node instanceof Tone.PitchShift) {
+        node.pitch = effect.pitch ?? 0;
+        node.feedback.value = effect.feedback ?? 0;
+        node.delayTime.value = effect.delayTime ?? 0;
+        node.windowSize = effect.windowSize ?? 0.1;
+      }
+      break;
+  }
+}
+
 /**
  * Convert an AudioBuffer into a downloadable WAV Blob.
  *
@@ -254,12 +354,15 @@ export function useAudioEngine() {
   // repeatedly polling Tone.Player for state.
   const playbackStateRef = useRef<Map<string, PlaybackState>>(new Map());
   const masterSyncStateRef = useRef<Map<string, boolean>>(new Map());
+  const effectNodeRegistry = useRef<Map<string, EffectNode>>(new Map());
 
   useEffect(() => {
     tracksRef.current = tracks;
   }, [tracks]);
 
   useEffect(() => {
+    const registry = effectNodeRegistry.current;
+
     const init = async () => {
       // Tone.js contexts must be primed inside a user gesture, so the hook only
       // prepares simple state and leaves Tone.start() to the caller when
@@ -281,6 +384,8 @@ export function useAudioEngine() {
             URL.revokeObjectURL(t.url);
         }
       });
+      registry.forEach(node => node.dispose());
+      registry.clear();
       recorderRef.current?.dispose();
       userMediaRef.current?.dispose();
       Tone.Transport.stop();
@@ -355,9 +460,13 @@ export function useAudioEngine() {
   );
 
   const configureLoopForTrack = useCallback(
-    (track: Track, start: number, end: number | null): { loopEnd: number | null } => {
+    (
+      track: Track,
+      start: number,
+      end: number | null
+    ): { loopEnd: number | null; shouldLoop: boolean } => {
       if (!track.player) {
-        return { loopEnd: null };
+        return { loopEnd: null, shouldLoop: false };
       }
 
       const candidateLoopEnd = track.isLooping ? end ?? track.duration ?? null : null;
@@ -371,7 +480,7 @@ export function useAudioEngine() {
         track.player.loopEnd = candidateLoopEnd;
       }
 
-      return { loopEnd: shouldLoop ? candidateLoopEnd : null };
+      return { loopEnd: shouldLoop ? candidateLoopEnd : null, shouldLoop };
     },
     []
   );
@@ -388,9 +497,13 @@ export function useAudioEngine() {
       }
 
       const { start, end, duration } = getTrackSelectionBounds(track);
-      configureLoopForTrack(track, start, end);
+      const { shouldLoop } = configureLoopForTrack(track, start, end);
       player.sync();
-      player.start(0, start, duration);
+      if (shouldLoop || duration === undefined) {
+        player.start(0, start);
+      } else {
+        player.start(0, start, duration);
+      }
       player.seek(start);
       masterSyncStateRef.current.set(track.id, true);
     },
@@ -967,9 +1080,10 @@ export function useAudioEngine() {
       const trackSnapshot: Track = { ...track, player: track.player };
       unsyncPlayerFromMaster(trackSnapshot);
 
+      track.player.onstop = () => {};
       track.player.stop();
       track.player.seek(start);
-      const { loopEnd } = configureLoopForTrack(trackSnapshot, start, end);
+      const { loopEnd, shouldLoop } = configureLoopForTrack(trackSnapshot, start, end);
 
       track.player.onstop = () => {
         playbackStateRef.current.delete(trackId);
@@ -1009,7 +1123,11 @@ export function useAudioEngine() {
         })
       );
 
-      track.player.start(undefined, start, duration);
+      if (shouldLoop || duration === undefined) {
+        track.player.start(undefined, start);
+      } else {
+        track.player.start(undefined, start, duration);
+      }
     },
     [
       configureLoopForTrack,
@@ -1283,6 +1401,8 @@ export function useAudioEngine() {
     const soloedTracks = tracks.filter(t => t.isSoloed);
     const hasSolo = soloedTracks.length > 0;
 
+    const activeEffectIds = new Set<string>();
+
     tracks.forEach(track => {
       if (track.channel) {
         track.channel.volume.value = track.volume;
@@ -1290,40 +1410,48 @@ export function useAudioEngine() {
         track.channel.mute = hasSolo ? !track.isSoloed : track.isMuted;
       }
 
-      if(track.player && track.channel) {
-        // Rebuild the effect chain whenever the declarative effect list
-        // changes. Tone.js does not automatically diff nodes, so we dispose the
-        // previous instances and re-chain the Player through the fresh nodes
-        // before connecting to the track's Channel bus.
-        track.effects.forEach(e => e.node?.dispose());
+      if (track.player && track.channel) {
         track.player.disconnect();
 
-        // Create new effect nodes
-        const newEffectNodes = track.effects
-          .map((effect, index) => {
-            const node = instantiateEffectNode(effect);
+        const effectNodes: EffectNode[] = [];
+
+        track.effects.forEach(effect => {
+          activeEffectIds.add(effect.id);
+
+          let node = effectNodeRegistry.current.get(effect.id) ?? effect.node ?? null;
+
+          if (!node || !isEffectNodeOfType(effect.type, node)) {
+            node?.dispose();
+            node = instantiateEffectNode(effect);
+
             if (node) {
-              track.effects[index].node = node;
+              effectNodeRegistry.current.set(effect.id, node);
+            } else {
+              effectNodeRegistry.current.delete(effect.id);
             }
-            return node;
-          })
-          .filter((node): node is EffectNode => node !== null);
-        
-        if (newEffectNodes.length > 0) {
-            track.player.chain(...newEffectNodes, track.channel);
+          }
+
+          if (node) {
+            updateEffectNodeParameters(effect, node);
+            effect.node = node;
+            effectNodes.push(node);
+          }
+        });
+
+        if (effectNodes.length > 0) {
+          track.player.chain(...effectNodes, track.channel);
         } else {
-            track.player.connect(track.channel);
+          track.player.connect(track.channel);
         }
       }
     });
 
-    return () => {
-        tracks.forEach(track => {
-            track.effects.forEach(effect => {
-                effect.node?.dispose();
-            });
-        });
-    };
+    effectNodeRegistry.current.forEach((node, id) => {
+      if (!activeEffectIds.has(id)) {
+        node.dispose();
+        effectNodeRegistry.current.delete(id);
+      }
+    });
   }, [tracks]);
 
   return {

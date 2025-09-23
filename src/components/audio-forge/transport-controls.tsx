@@ -121,3 +121,60 @@ export function MasterTransportControls({
 
   );
 }
+
+interface MasterRecordControlsProps {
+  isRecording: boolean;
+  isPlayingBack: boolean;
+  hasRecording: boolean;
+  onRecordToggle: ClickHandler;
+  onPlaybackToggle: ClickHandler;
+  onExport: ClickHandler;
+}
+
+export function MasterRecordControls({
+  isRecording,
+  isPlayingBack,
+  hasRecording,
+  onRecordToggle,
+  onPlaybackToggle,
+  onExport,
+}: MasterRecordControlsProps) {
+  return (
+    <div className="flex items-center justify-between border-t bg-muted/40 px-4 py-3">
+      <div className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+        Master Record
+      </div>
+      <div className="flex items-center gap-3">
+        <Button
+          type="button"
+          variant={isRecording ? 'destructive' : 'outline'}
+          onClick={() => {
+            void onRecordToggle();
+          }}
+        >
+          {isRecording ? 'Stop' : 'Rec'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!hasRecording && !isPlayingBack}
+          onClick={() => {
+            void onPlaybackToggle();
+          }}
+        >
+          {isPlayingBack ? 'Stop' : 'Play'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!hasRecording}
+          onClick={() => {
+            void onExport();
+          }}
+        >
+          Export
+        </Button>
+      </div>
+    </div>
+  );
+}

@@ -122,17 +122,26 @@ function applyWetValue(node: any, wet: number) {
   }
 }
 
-function instantiateEffectNode(effect: Effect): EffectNode | null {
+async function instantiateEffectNode(
+  effect: Effect
+): Promise<EffectNode | null> {
   let node: EffectNode | null = null;
 
   switch (effect.type) {
-    case 'reverb':
-      node = new Tone.Reverb({
+    case 'reverb': {
+      const reverb = new Tone.Reverb({
         wet: effect.wet,
         decay: effect.decay ?? 1.5,
         preDelay: effect.preDelay ?? 0.01,
       });
+      // Reverb buffers are generated asynchronously in Tone.js 15, so the
+      // instance must finish preparing its impulse response before any wet
+      // signal is audible. Waiting here avoids the "all dry" or silent output
+      // users reported when pushing the wet mix to 100%.
+      await reverb.ready;
+      node = reverb;
       break;
+    }
     case 'delay':
       node = new Tone.FeedbackDelay({
         wet: effect.wet,
@@ -146,14 +155,20 @@ function instantiateEffectNode(effect: Effect): EffectNode | null {
         distortion: effect.distortion ?? 0.4,
       });
       break;
-    case 'chorus':
-      node = new Tone.Chorus({
+    case 'chorus': {
+      const chorus = new Tone.Chorus({
         wet: effect.wet,
         frequency: effect.frequency ?? 1.5,
         delayTime: effect.delayTime ?? 3.5,
         depth: effect.depth ?? 0.7,
       });
+      // Chorus' modulation LFOs are opt-in in Tone.js 15, so explicitly start
+      // them to honor the wet mix and produce the detuned effect instead of a
+      // dry bypass signal.
+      chorus.start();
+      node = chorus;
       break;
+    }
     case 'phaser':
       node = new Tone.Phaser({
         wet: effect.wet,
@@ -1896,16 +1911,16 @@ export function useAudioEngine() {
       // the callback, honoring solo/mute logic and chaining fresh effect nodes
       // per track before starting each Player at time 0.
       const offlineBuffer = await Tone.Offline(async () => {
-        validTracks.forEach(track => {
+        for (const track of validTracks) {
           const channel = new Tone.Channel();
           channel.volume.value = track.volume;
           channel.pan.value = track.pan;
           channel.mute = hasSolo ? !track.isSoloed : track.isMuted;
           channel.toDestination();
 
-          const effectNodes = track.effects
-            .map(instantiateEffectNode)
-            .filter((node): node is EffectNode => node !== null);
+          const effectNodes = (
+            await Promise.all(track.effects.map(instantiateEffectNode))
+          ).filter((node): node is EffectNode => node !== null);
 
           const player = track.audioBuffer
             ? createPlayerFromAudioBuffer(track.audioBuffer)
@@ -1918,7 +1933,7 @@ export function useAudioEngine() {
           }
 
           player.start(0);
-        });
+        }
 
         // Wait for every Player in the offline context to finish scheduling
         // before Tone resolves the rendered buffer.
@@ -1950,28 +1965,43 @@ export function useAudioEngine() {
     const soloedTracks = tracks.filter(t => t.isSoloed);
     const hasSolo = soloedTracks.length > 0;
 
-    const activeEffectIds = new Set<string>();
-
     tracks.forEach(track => {
       if (track.channel) {
         track.channel.volume.value = track.volume;
         track.channel.pan.value = track.pan;
         track.channel.mute = hasSolo ? !track.isSoloed : track.isMuted;
       }
+    });
 
-      if (track.player && track.channel) {
-        track.player.disconnect();
+    let isCancelled = false;
+
+    // Rebuild the tone graph asynchronously because certain effects (e.g. the
+    // Reverb impulse generator) need time to finish initializing before any
+    // wet signal is audible.
+    const rebuildEffectGraphs = async () => {
+      const activeEffectIds = new Set<string>();
+      const trackEffectMap = new Map<string, EffectNode[]>();
+
+      for (const track of tracks) {
+        if (!track.player || !track.channel) {
+          continue;
+        }
 
         const effectNodes: EffectNode[] = [];
 
-        track.effects.forEach(effect => {
+        for (const effect of track.effects) {
           activeEffectIds.add(effect.id);
 
           let node = effectNodeRegistry.current.get(effect.id) ?? effect.node ?? null;
 
           if (!node || !isEffectNodeOfType(effect.type, node)) {
             node?.dispose();
-            node = instantiateEffectNode(effect);
+            node = await instantiateEffectNode(effect);
+
+            if (isCancelled) {
+              node?.dispose();
+              return;
+            }
 
             if (node) {
               effectNodeRegistry.current.set(effect.id, node);
@@ -1985,22 +2015,43 @@ export function useAudioEngine() {
             effect.node = node;
             effectNodes.push(node);
           }
-        });
+        }
 
+        trackEffectMap.set(track.id, effectNodes);
+      }
+
+      if (isCancelled) {
+        return;
+      }
+
+      tracks.forEach(track => {
+        if (!track.player || !track.channel) {
+          return;
+        }
+
+        track.player.disconnect();
+
+        const effectNodes = trackEffectMap.get(track.id) ?? [];
         if (effectNodes.length > 0) {
           track.player.chain(...effectNodes, track.channel);
         } else {
           track.player.connect(track.channel);
         }
-      }
-    });
+      });
 
-    effectNodeRegistry.current.forEach((node, id) => {
-      if (!activeEffectIds.has(id)) {
-        node.dispose();
-        effectNodeRegistry.current.delete(id);
-      }
-    });
+      effectNodeRegistry.current.forEach((node, id) => {
+        if (!activeEffectIds.has(id)) {
+          node.dispose();
+          effectNodeRegistry.current.delete(id);
+        }
+      });
+    };
+
+    void rebuildEffectGraphs();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [tracks]);
 
   const hasMasterRecording = masterRecordingUrl !== null;
